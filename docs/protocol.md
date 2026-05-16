@@ -174,11 +174,18 @@ sequenceDiagram
     participant C as Client
     participant S as Server
 
+    Note over C: Plaintext passphrase in memory<br/>(from Security settings UI)
+
     Note over S: Server stores PHC<br/>(Argon2id hash + salt)
 
-    S->>C: AuthChallenge { nonce (32 B), salt (16 B) }
+    S->>C: AuthChallenge { noncgie (32 B), salt (16 B) }
 
-    Note over C: Client derives key:<br/>Argon2id(passphrase, salt)
+    alt Client has saved PHC
+        Note over C: No plaintext needed<br/>PHC directly derives key
+    else No saved PHC
+        Note over C: Plaintext passphrase in use<br/>Argon2id(passphrase, salt) -> key
+    end
+
     Note over C: Client computes:<br/>hmac = HMAC-SHA256(nonce, key)
 
     C->>S: AuthResponse { hmac }
@@ -188,6 +195,7 @@ sequenceDiagram
     alt HMAC matches
         S->>C: AuthResult { ok: true }
         S->>C: SessionInit
+        Note over C: PHC persisted to config.toml<br/>(for next connection)
     else HMAC mismatch
         S->>C: AuthResult { ok: false }
         S--xC: close TLS
