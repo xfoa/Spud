@@ -59,7 +59,7 @@ impl ServerListener {
         #[cfg(target_os = "linux")]
         let helper_cancel: Arc<std::sync::atomic::AtomicBool> = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         let injector: Arc<OnceLock<crate::input::InputInjector>> = Arc::new(OnceLock::new());
         #[cfg(target_os = "linux")]
         {
@@ -86,13 +86,24 @@ impl ServerListener {
                 }
             }
         }
+        #[cfg(target_os = "windows")]
+        {
+            match crate::input::InputInjector::new(screen_width, screen_height) {
+                Ok(inj) => {
+                    let _ = injector.set(inj);
+                }
+                Err(e) => {
+                    eprintln!("[spud] Failed to create Windows input injector: {e}");
+                }
+            }
+        }
 
         let s = shutdown.clone();
         let cancel = CancellationToken::new();
         let c = cancel.clone();
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         let handle = tokio::spawn(run_server(tcp, udp, acceptor, s, require_auth, passphrase_hash, encrypt_udp, key_timeout_ms, sessions, screen_width, screen_height, injector, c, batch_history_multiplier));
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
         let handle = tokio::spawn(run_server(tcp, udp, acceptor, s, require_auth, passphrase_hash, encrypt_udp, key_timeout_ms, sessions, screen_width, screen_height, c, batch_history_multiplier));
 
         Ok(Self {
@@ -258,7 +269,7 @@ async fn run_server(
     sessions: Arc<SessionTable>,
     screen_width: u16,
     screen_height: u16,
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     injector: Arc<OnceLock<crate::input::InputInjector>>,
     cancel: CancellationToken,
     batch_history_multiplier: u8,
@@ -290,7 +301,7 @@ async fn run_server(
                     for action in &actions {
                         println!("[server] (timeout): {action}");
                     }
-                    #[cfg(any(target_os = "linux", target_os = "macos"))]
+                    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
                     if let Some(inj) = injector.get() {
                         for action in &actions {
                             inj.inject_action(action);
@@ -348,7 +359,7 @@ async fn run_server(
                                             continue;
                                         }
                                         for event in &batch.events {
-                                            #[cfg(any(target_os = "linux", target_os = "macos"))]
+                                            #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
                                             if let Some(inj) = injector.get() {
                                                 if !is_localhost {
                                                     match event {
@@ -406,7 +417,7 @@ async fn run_server(
                                                 println!("[server] {src}: {action}");
                                             }
                                         }
-                                        #[cfg(any(target_os = "linux", target_os = "macos"))]
+                                        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
                                         if let Some(inj) = injector.get() {
                                             if !is_localhost {
                                                 if needs_key_down {

@@ -10,6 +10,8 @@ mod inject_macos;
 mod macos;
 #[cfg(target_os = "macos")]
 pub mod macos_keycodes;
+#[cfg(target_os = "windows")]
+pub mod windows_keycodes;
 
 #[cfg(target_os = "linux")]
 mod wayland;
@@ -22,6 +24,12 @@ pub use inject::InputInjector;
 pub use inject::wire_to_linux_button;
 #[cfg(target_os = "macos")]
 pub use inject_macos::InputInjector;
+#[cfg(target_os = "windows")]
+mod inject_windows;
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+pub use inject_windows::InputInjector;
 
 use iced::futures::stream::BoxStream;
 #[cfg(not(target_os = "linux"))]
@@ -75,7 +83,11 @@ pub fn listen(hotkey: String) -> BoxStream<'static, InputEvent> {
     {
         return Box::pin(macos::listen(hotkey));
     }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[cfg(target_os = "windows")]
+    {
+        return Box::pin(windows::listen(hotkey));
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
         let _ = hotkey;
         Box::pin(stream::once(async {

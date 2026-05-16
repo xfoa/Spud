@@ -4262,6 +4262,7 @@ dependencies = [
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
+ "windows 0.62.2",
  "x11rb",
  "x509-parser",
  "zeroize",
