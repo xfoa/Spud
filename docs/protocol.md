@@ -181,9 +181,9 @@ sequenceDiagram
     S->>C: AuthChallenge { noncgie (32 B), salt (16 B) }
 
     alt Client has saved PHC
-        Note over C: No plaintext needed<br/>PHC directly derives key
+        Note over C: No plaintext needed<br/>Stored PHC contains key
     else No saved PHC
-        Note over C: Plaintext passphrase in use<br/>Argon2id(passphrase, salt) -> key
+        Note over C: Plaintext passphrase in memory<br/>Argon2id(passphrase, salt) -> key
     end
 
     Note over C: Client computes:<br/>hmac = HMAC-SHA256(nonce, key)
