@@ -4,14 +4,13 @@ use std::thread::{self, JoinHandle};
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     MapVirtualKeyW, INPUT, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY,
-    KEYEVENTF_SCANCODE, KEYEVENTF_UNICODE, MAPVK_VSC_TO_VK, MOUSEEVENTF_ABSOLUTE,
+    KEYEVENTF_UNICODE, MAPVK_VSC_TO_VK, MOUSEEVENTF_ABSOLUTE,
     MOUSEEVENTF_HWHEEL, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN,
     MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
     MOUSEEVENTF_WHEEL, MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MOUSEINPUT, VIRTUAL_KEY,
-    WHEEL_DELTA, XBUTTON1, XBUTTON2,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+    GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
     SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
 };
 
@@ -28,6 +27,10 @@ pub enum InjectCmd {
     ButtonUp { code: u16 },
     Wheel { dx: i8, dy: i8 },
 }
+
+const WHEEL_DELTA: i32 = 120;
+const XBUTTON1: u32 = 1;
+const XBUTTON2: u32 = 2;
 
 /// Injects input events on Windows via `SendInput`.
 pub struct InputInjector {
@@ -188,7 +191,7 @@ fn send_mouse_input(mi: MOUSEINPUT) {
     let input = INPUT {
         r#type: INPUT_MOUSE,
         Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
-            mi: std::mem::ManuallyDrop::new(mi),
+            mi,
         },
     };
     unsafe {
@@ -221,13 +224,13 @@ fn send_key_event(evdev_code: u16, down: bool) {
                 let input = INPUT {
                     r#type: INPUT_KEYBOARD,
                     Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
-                        ki: std::mem::ManuallyDrop::new(KEYBDINPUT {
+                        ki: KEYBDINPUT {
                             wVk: VIRTUAL_KEY(0),
                             wScan: evdev_code as u16,
                             dwFlags: KEYEVENTF_UNICODE,
                             time: 0,
                             dwExtraInfo: 0,
-                        }),
+                        },
                     },
                 };
                 unsafe {
@@ -241,13 +244,13 @@ fn send_key_event(evdev_code: u16, down: bool) {
     let input = INPUT {
         r#type: INPUT_KEYBOARD,
         Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
-            ki: std::mem::ManuallyDrop::new(KEYBDINPUT {
+            ki: KEYBDINPUT {
                 wVk: VIRTUAL_KEY(vk),
                 wScan: 0,
                 dwFlags: windows::Win32::UI::Input::KeyboardAndMouse::KEYBD_EVENT_FLAGS(flags),
                 time: 0,
                 dwExtraInfo: 0,
-            }),
+            },
         },
     };
     unsafe {

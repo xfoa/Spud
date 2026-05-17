@@ -1,22 +1,21 @@
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{self, Sender as MpscSender};
 use std::thread;
 
 use iced::futures::Stream;
 use windows::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VIRTUAL_KEY, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_RCONTROL,
-    VK_RMENU, VK_RSHIFT, VK_RWIN,
+    GetAsyncKeyState, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_RCONTROL,
+    VK_RMENU, VK_RSHIFT, VK_RWIN, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, ClipCursor, GetCursorPos, GetMessageW, PostThreadMessageW, RegisterHotKey,
-    SetCursorPos, ShowCursor, TranslateMessage, DispatchMessageW, UnhookWindowsHookEx,
-    HHOOK, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN,
-    WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE,
-    WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
-    WM_XBUTTONDOWN, WM_XBUTTONUP, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN,
-    GET_WHEEL_DELTA_WPARAM,
+    CallNextHookEx, ClipCursor, GetCursorPos, GetMessageW, PostThreadMessageW,
+    SetWindowsHookExW, ShowCursor, TranslateMessage, DispatchMessageW, UnhookWindowsHookEx,
+    KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE,
+    WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN,
+    WM_XBUTTONDOWN, WM_XBUTTONUP, WHEEL_DELTA,
 };
 
 use crate::input::InputEvent;
@@ -118,11 +117,14 @@ fn run(
 
     HOOK_THREAD_ID.store(unsafe { windows::Win32::System::Threading::GetCurrentThreadId() }, Ordering::Relaxed);
 
+    let hmod = unsafe { windows::Win32::System::LibraryLoader::GetModuleHandleW(None)? };
+    let hinstance = windows::Win32::Foundation::HINSTANCE(hmod.0);
+
     let kbd_hook = unsafe {
         SetWindowsHookExW(
             WH_KEYBOARD_LL,
             Some(keyboard_hook_proc),
-            windows::Win32::System::LibraryLoader::GetModuleHandleW(None)?,
+            Some(hinstance),
             0,
         )?
     };
@@ -131,15 +133,15 @@ fn run(
         SetWindowsHookExW(
             WH_MOUSE_LL,
             Some(mouse_hook_proc),
-            windows::Win32::System::LibraryLoader::GetModuleHandleW(None)?,
+            Some(hinstance),
             0,
         )?
     };
 
     let mut msg: MSG = unsafe { std::mem::zeroed() };
-    while unsafe { GetMessageW(&mut msg, None, 0, 0) } > 0 {
+    while unsafe { GetMessageW(&mut msg, None, 0, 0).0 } > 0 {
         unsafe {
-            TranslateMessage(&msg);
+            let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
     }
@@ -170,7 +172,7 @@ unsafe extern "system" fn keyboard_hook_proc(
         return CallNextHookEx(None, n_code, w_param, l_param);
     }
 
-    let info = *(l_param as *const KBDLLHOOKSTRUCT);
+    let info = *(l_param.0 as *const KBDLLHOOKSTRUCT);
     let vk = info.vkCode as u16;
     let down = matches!(
         w_param.0 as u32,
@@ -236,7 +238,7 @@ unsafe extern "system" fn mouse_hook_proc(
     }
 
     let msg = w_param.0 as u32;
-    let info = *(l_param as *const MSLLHOOKSTRUCT);
+    let info = *(l_param.0 as *const MSLLHOOKSTRUCT);
 
     match msg {
         WM_MOUSEMOVE => {
@@ -277,8 +279,8 @@ unsafe extern "system" fn mouse_hook_proc(
             send_event(InputEvent::MouseButton { button: wire, pressed: false });
         }
         WM_MOUSEWHEEL => {
-            let delta = GET_WHEEL_DELTA_WPARAM(WPARAM(info.mouseData as usize)) as i16;
-            let dy = (delta / WHEEL_DELTA as i16) as i8;
+            let delta = (info.mouseData >> 16) as i16;
+            let dy = (delta / (WHEEL_DELTA as i16)) as i8;
             send_event(InputEvent::Wheel { dx: 0, dy });
         }
         _ => {}
@@ -291,16 +293,16 @@ fn current_modifiers() -> u16 {
     let mut mods = 0u16;
     unsafe {
         if GetAsyncKeyState(VK_LSHIFT.0 as i32) < 0 || GetAsyncKeyState(VK_RSHIFT.0 as i32) < 0 {
-            mods |= MOD_SHIFT as u16;
+            mods |= MOD_SHIFT.0 as u16;
         }
         if GetAsyncKeyState(VK_LCONTROL.0 as i32) < 0 || GetAsyncKeyState(VK_RCONTROL.0 as i32) < 0 {
-            mods |= MOD_CONTROL as u16;
+            mods |= MOD_CONTROL.0 as u16;
         }
         if GetAsyncKeyState(VK_LMENU.0 as i32) < 0 || GetAsyncKeyState(VK_RMENU.0 as i32) < 0 {
-            mods |= MOD_ALT as u16;
+            mods |= MOD_ALT.0 as u16;
         }
         if GetAsyncKeyState(VK_LWIN.0 as i32) < 0 || GetAsyncKeyState(VK_RWIN.0 as i32) < 0 {
-            mods |= MOD_WIN as u16;
+            mods |= MOD_WIN.0 as u16;
         }
     }
     mods
@@ -323,10 +325,10 @@ fn parse_hotkey(hotkey: &str) -> Result<(u16, u16), String> {
 
     for part in hotkey.split('+').map(|p| p.trim()) {
         match part {
-            "Ctrl" => mods |= MOD_CONTROL as u16,
-            "Alt" => mods |= MOD_ALT as u16,
-            "Shift" => mods |= MOD_SHIFT as u16,
-            "Super" | "Meta" | "Win" | "Command" | "Cmd" => mods |= MOD_WIN as u16,
+            "Ctrl" => mods |= MOD_CONTROL.0 as u16,
+            "Alt" => mods |= MOD_ALT.0 as u16,
+            "Shift" => mods |= MOD_SHIFT.0 as u16,
+            "Super" | "Meta" | "Win" | "Command" | "Cmd" => mods |= MOD_WIN.0 as u16,
             other => {
                 if key_label.is_some() {
                     return Err(format!("multiple non-modifier keys in '{hotkey}'"));
