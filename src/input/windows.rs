@@ -6,15 +6,15 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use iced::futures::Stream;
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_RCONTROL,
+    GetAsyncKeyState, RegisterHotKey, UnregisterHotKey, HOT_KEY_MODIFIERS, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_RCONTROL,
     VK_RMENU, VK_RSHIFT, VK_RWIN, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, ClipCursor, CreateWindowExW, DestroyWindow, GetCursorPos, GetMessageW,
-    PeekMessageW, PostThreadMessageW, RegisterHotKey, SetWindowsHookExW, ShowCursor,
-    TranslateMessage, DispatchMessageW, UnhookWindowsHookEx, UnregisterHotKey,
+    PeekMessageW, PostThreadMessageW, SetWindowsHookExW, ShowCursor,
+    TranslateMessage, DispatchMessageW, UnhookWindowsHookEx,
     KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_HOTKEY,
     WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
     WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP,
@@ -177,29 +177,31 @@ fn run(
     // toggle mechanism. The LL hook can fail when our own window has focus
     // (console/GUI subsystem interaction), but RegisterHotKey is reliable.
     let hotkey_hwnd = unsafe {
-        let hwnd = CreateWindowExW(
+        match CreateWindowExW(
             WINDOW_EX_STYLE(0),
             windows::core::w!("Static"),
             windows::core::w!("SpudHotkey"),
             WINDOW_STYLE(0),
             0, 0, 0, 0,
-            HWND_MESSAGE,
+            Some(HWND_MESSAGE),
             None,
             Some(hinstance),
             None,
-        );
-        if hwnd.is_invalid() {
-            eprintln!("[spud] Failed to create message-only window for hotkey");
-            None
-        } else {
-            let result = RegisterHotKey(hwnd, 1, hotkey_mods as u32, hotkey_vk as u32);
-            if result.is_err() {
-                eprintln!("[spud] RegisterHotKey failed, relying on LL hook for toggle");
-                let _ = DestroyWindow(hwnd);
+        ) {
+            Ok(hwnd) => {
+                let result = RegisterHotKey(Some(hwnd), 1, HOT_KEY_MODIFIERS(hotkey_mods as u32), hotkey_vk as u32);
+                if result.is_err() {
+                    eprintln!("[spud] RegisterHotKey failed, relying on LL hook for toggle");
+                    let _ = DestroyWindow(hwnd);
+                    None
+                } else {
+                    eprintln!("[spud] RegisterHotKey active for toggle");
+                    Some(hwnd)
+                }
+            }
+            Err(_) => {
+                eprintln!("[spud] Failed to create message-only window for hotkey");
                 None
-            } else {
-                eprintln!("[spud] RegisterHotKey active for toggle");
-                Some(hwnd)
             }
         }
     };
@@ -247,7 +249,7 @@ fn run(
 
     unsafe {
         if let Some(hwnd) = hotkey_hwnd {
-            let _ = UnregisterHotKey(hwnd, 1);
+            let _ = UnregisterHotKey(Some(hwnd), 1);
             let _ = DestroyWindow(hwnd);
         }
         let _ = UnhookWindowsHookEx(kbd_hook);
