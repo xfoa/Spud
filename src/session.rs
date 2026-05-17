@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use dashmap::DashMap;
 use hkdf::Hkdf;
-use rand_core::{OsRng, RngCore};
+
 use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -143,7 +143,7 @@ pub type ConnId = u64;
 /// Generate a random session UUID and derive a ConnID from it.
 pub fn generate_session() -> (SessionUuid, ConnId) {
     let mut uuid = [0u8; 16];
-    OsRng.fill_bytes(&mut uuid);
+    getrandom::fill(&mut uuid).expect("getrandom failed");
 
     let hkdf = Hkdf::<Sha256>::new(None, &uuid);
     let mut conn_id_bytes = [0u8; 8];
