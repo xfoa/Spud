@@ -46,8 +46,9 @@ There already exist tools that solve similar problems to Spud, so why not use th
   * Wayland
     * Tested on Gnome, KDE, and COSMIC
 * macOS
-  * Tested on Tahoe (26)
-* Windows support comming soon!
+  * Tested on Tahoe (version 26)
+* Windows 11
+  * Tested on version 25H2
 
 ## Install
 
@@ -79,6 +80,11 @@ Better options coming soon!
 On **macOS**, fullscreen/hotkey input capture requires **Accessibility** permission (and **Input Monitoring** permission on macOS 10.15+).
 The app will prompt you to enable these in System Settings when you first attempt to capture input.
 Server-side input injection does not require special permissions.
+
+### Windows
+
+At the moment only available via `cargo run`.
+Better options coming soon! 
 
 ## Build
 
