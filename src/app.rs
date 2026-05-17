@@ -387,8 +387,14 @@ impl Spud {
                 #[cfg(target_os = "linux")]
                 if handles.is_some() {
                     eprintln!("[spud] Wayland handles acquired");
+                    self.client.set_wayland_mode(true);
                 } else {
                     eprintln!("[spud] Wayland handles not available, falling back to X11 backend");
+                    self.client.set_wayland_mode(false);
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    self.client.set_wayland_mode(false);
                 }
                 self.wayland_handles = handles;
                 Task::none()

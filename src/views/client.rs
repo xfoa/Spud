@@ -106,6 +106,7 @@ pub struct State {
     sensitivity: f32,
     natural_scroll: bool,
     capture_mode: CaptureMode,
+    wayland_mode: bool,
     hotkey: String,
     require_auth: bool,
     passphrase: String,
@@ -167,6 +168,7 @@ impl State {
             sensitivity: cfg.sensitivity.parse().unwrap_or(1.0),
             natural_scroll: cfg.natural_scroll,
             capture_mode: cfg.capture_mode,
+            wayland_mode: false,
             hotkey: cfg.hotkey.clone(),
             require_auth: cfg.require_auth,
             passphrase: String::new(),
@@ -485,11 +487,11 @@ impl State {
                 {
                     if format_chord(key, *modifiers).as_deref() == Some(self.hotkey.as_str())
                     {
-                        if self.capture_mode == CaptureMode::Fullscreen {
+                        if self.capture_mode == CaptureMode::Fullscreen && self.wayland_mode {
                             let new_grab = crate::input::toggle_wayland_grab();
                             self.user_capturing = new_grab;
                             self.grabbed = new_grab;
-                        } else {
+                        } else if self.capture_mode == CaptureMode::Window {
                             self.user_capturing = !self.user_capturing;
                             self.grabbed = self.user_capturing;
                             if !self.grabbed {
@@ -719,6 +721,10 @@ impl State {
 
     pub fn reconnect_generation(&self) -> u64 {
         self.reconnect_generation
+    }
+
+    pub fn set_wayland_mode(&mut self, wayland_mode: bool) {
+        self.wayland_mode = wayland_mode;
     }
 
     pub fn hotkey_string(&self) -> &str {
