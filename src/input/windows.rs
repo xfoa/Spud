@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Sender as MpscSender};
 use std::thread;
 
@@ -10,22 +10,12 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     VK_RMENU, VK_RSHIFT, VK_RWIN, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-<<<<<<< HEAD
-    CallNextHookEx, ClipCursor, GetCursorPos, GetMessageW, PostThreadMessageW,
-    SetWindowsHookExW, ShowCursor, TranslateMessage, DispatchMessageW, UnhookWindowsHookEx,
-    KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE,
-    WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN,
-    WM_XBUTTONDOWN, WM_XBUTTONUP, WHEEL_DELTA,
-=======
     CallNextHookEx, ClipCursor, GetCursorPos, GetMessageW, PeekMessageW, PostThreadMessageW,
-    RegisterHotKey, SetCursorPos, ShowCursor, TranslateMessage, DispatchMessageW,
-    UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL,
-    WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
+    SetWindowsHookExW, ShowCursor, TranslateMessage, DispatchMessageW,
+    UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL,
+    WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
     WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP,
-    WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN, WM_XBUTTONUP, MOD_ALT, MOD_CONTROL,
-    MOD_SHIFT, MOD_WIN, GET_WHEEL_DELTA_WPARAM, PM_NOREMOVE,
->>>>>>> c5186694bd8dfa9cfb8cbe0b6f103d4bc4c1878e
+    WM_SYSKEYDOWN, WM_XBUTTONDOWN, WM_XBUTTONUP, WHEEL_DELTA, PM_NOREMOVE,
 };
 
 use crate::input::InputEvent;
@@ -133,17 +123,15 @@ fn run(
 
     HOOK_THREAD_ID.store(unsafe { windows::Win32::System::Threading::GetCurrentThreadId() }, Ordering::Relaxed);
 
-<<<<<<< HEAD
     let hmod = unsafe { windows::Win32::System::LibraryLoader::GetModuleHandleW(None)? };
     let hinstance = windows::Win32::Foundation::HINSTANCE(hmod.0);
-=======
+    
     // Force creation of a message queue before installing hooks.
     // Without this, SetWindowsHookEx may not dispatch callbacks correctly.
     unsafe {
         let mut dummy: MSG = std::mem::zeroed();
         let _ = PeekMessageW(&mut dummy, None, 0, 0, PM_NOREMOVE);
     }
->>>>>>> c5186694bd8dfa9cfb8cbe0b6f103d4bc4c1878e
 
     let kbd_hook = unsafe {
         SetWindowsHookExW(
@@ -167,26 +155,19 @@ fn run(
 
     eprintln!("[spud] Message pump starting");
     let mut msg: MSG = unsafe { std::mem::zeroed() };
-<<<<<<< HEAD
-    while unsafe { GetMessageW(&mut msg, None, 0, 0).0 } > 0 {
-        unsafe {
-            let _ = TranslateMessage(&msg);
-            DispatchMessageW(&msg);
-=======
     loop {
         let ret = unsafe { GetMessageW(&mut msg, None, 0, 0) };
-        if ret > 0 {
+        if ret.0 > 0 {
             unsafe {
-                TranslateMessage(&msg);
+                let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
-        } else if ret == 0 {
+        } else if ret.0 == 0 {
             eprintln!("[spud] Message pump exiting (WM_QUIT)");
             break;
         } else {
             eprintln!("[spud] Message pump error: GetMessageW failed");
             break;
->>>>>>> c5186694bd8dfa9cfb8cbe0b6f103d4bc4c1878e
         }
     }
 
