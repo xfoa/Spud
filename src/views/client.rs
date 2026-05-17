@@ -487,6 +487,7 @@ impl State {
                 {
                     if format_chord(key, *modifiers).as_deref() == Some(self.hotkey.as_str())
                     {
+                        eprintln!("[client] Capture: hotkey detected, mode={:?}, wayland_mode={}", self.capture_mode, self.wayland_mode);
                         if self.capture_mode == CaptureMode::Fullscreen && self.wayland_mode {
                             let new_grab = crate::input::toggle_wayland_grab();
                             self.user_capturing = new_grab;
@@ -533,6 +534,7 @@ impl State {
             }
             Message::HotkeyEvent(event) => {
                 if let crate::input::InputEvent::HotkeyToggled { grabbed } = event {
+                    eprintln!("[client] HotkeyEvent: HotkeyToggled grabbed={grabbed}");
                     self.grabbed = grabbed;
                     self.user_capturing = grabbed;
                     if !grabbed {

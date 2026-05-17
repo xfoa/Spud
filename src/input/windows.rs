@@ -210,6 +210,7 @@ unsafe extern "system" fn keyboard_hook_proc(
     // Hotkey detection only on keydown.
     if down {
         let mods = current_modifiers();
+        eprintln!("[spud] KBD hook: vk=0x{vk:04X}, mods={mods:04b}, grabbed={}, hotkey_vk=0x{:04X}, hotkey_mods={:04b}", is_grabbed(), hotkey_vk(), hotkey_mods());
         if vk == hotkey_vk() {
             if mods != hotkey_mods() {
                 eprintln!("[spud] Hotkey key pressed but modifiers mismatch: vk=0x{vk:04X}, mods={mods:04b}, expected_mods={:04b}", hotkey_mods());
