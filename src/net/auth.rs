@@ -1,6 +1,5 @@
-use hmac::{Hmac, Mac};
-use rand_core::OsRng;
-use rand_core::RngCore;
+use hmac::{Hmac, KeyInit, Mac};
+
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
@@ -9,7 +8,7 @@ use crate::config::hash_passphrase_with_salt;
 /// Generate a 32-byte random challenge.
 pub fn generate_challenge() -> [u8; 32] {
     let mut challenge = [0u8; 32];
-    OsRng.fill_bytes(&mut challenge);
+    getrandom::fill(&mut challenge).expect("getrandom failed");
     challenge
 }
 

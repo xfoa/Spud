@@ -1,7 +1,6 @@
-use aes_gcm::aead::{Aead, AeadCore, Payload};
+use aes_gcm::aead::{Aead, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
 use hkdf::Hkdf;
-use rand_core::OsRng;
 use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -93,7 +92,9 @@ pub fn derive_udp_keys(exported: &[u8; 64]) -> UdpKeys {
 
 /// Encrypt an event with AES-256-GCM. Sequence number is bound as AAD.
 pub fn encrypt_event(cipher: &Aes256Gcm, seq: u64, plaintext: &[u8]) -> Result<Vec<u8>, aes_gcm::Error> {
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let mut nonce_bytes = [0u8; 12];
+    getrandom::fill(&mut nonce_bytes).map_err(|_| aes_gcm::Error)?;
+    let nonce = Nonce::from_slice(&nonce_bytes);
     let seq_bytes = seq.to_le_bytes();
     let payload = Payload {
         msg: plaintext,

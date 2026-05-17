@@ -1,7 +1,7 @@
 use std::net::{IpAddr, SocketAddr};
 use std::sync::OnceLock;
 
-use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
+use mdns_sd::{ResolvedService, ServiceDaemon, ServiceEvent, ServiceInfo};
 
 use crate::config::ServerIcon;
 use crate::icons;
@@ -106,6 +106,7 @@ pub fn browse() -> impl iced::futures::Stream<Item = Event> + Send + 'static {
                 Ok(ServiceEvent::SearchStarted(_)) => {}
                 Ok(ServiceEvent::ServiceFound(_, _)) => {}
                 Ok(ServiceEvent::ServiceResolved(info)) => {
+                    let info = &*info;
                     let fullname = info.get_fullname().to_string();
                     let name = info
                         .get_properties()
@@ -118,7 +119,7 @@ pub fn browse() -> impl iced::futures::Stream<Item = Event> + Send + 'static {
                         .map(|r| r.val_str().trim_end_matches('.').to_string())
                         .unwrap_or_else(|| info.get_hostname().trim_end_matches('.').to_string());
                     let port = info.get_port().to_string();
-                    let icon = resolve_icon(&info);
+                    let icon = resolve_icon(info);
                     let auth = info
                         .get_properties()
                         .get("auth")
@@ -134,6 +135,7 @@ pub fn browse() -> impl iced::futures::Stream<Item = Event> + Send + 'static {
                         .get_addresses()
                         .iter()
                         .filter(|ip| {
+                            let ip = ip.to_ip_addr();
                             !ip.is_loopback()
                                 && !ip.is_multicast()
                                 && !ip.is_unspecified()
@@ -142,7 +144,7 @@ pub fn browse() -> impl iced::futures::Stream<Item = Event> + Send + 'static {
                                     std::net::IpAddr::V6(a) => a.is_unicast_link_local(),
                                 }
                         })
-                        .map(|ip| SocketAddr::new(*ip, info.get_port()))
+                        .map(|ip| SocketAddr::new(ip.to_ip_addr(), info.get_port()))
                         .collect();
                     // Deterministic ordering: IPv4 before IPv6
                     addrs.sort_by(|a, b| {
@@ -264,7 +266,7 @@ fn strip_service_type(fullname: &str) -> String {
         .to_string()
 }
 
-fn resolve_icon(info: &ServiceInfo) -> char {
+fn resolve_icon(info: &ResolvedService) -> char {
     let val = info
         .get_properties()
         .get("icon")

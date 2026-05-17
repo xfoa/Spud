@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use argon2::{Argon2, PasswordHasher};
-use argon2::password_hash::{PasswordHash, SaltString, rand_core::OsRng};
+use argon2::password_hash::{PasswordHash, SaltString};
 use serde::{Deserialize, Serialize};
 
 use crate::icons;
@@ -66,7 +66,9 @@ impl std::fmt::Display for CaptureMode {
 
 pub fn hash_passphrase(passphrase: &str) -> String {
     let argon2 = Argon2::default();
-    let salt = SaltString::generate(&mut OsRng);
+    let mut salt_bytes = [0u8; 16];
+    getrandom::fill(&mut salt_bytes).expect("getrandom failed");
+    let salt = SaltString::encode_b64(&salt_bytes).expect("invalid salt");
     argon2.hash_password(passphrase.as_bytes(), &salt)
         .map(|h| h.to_string())
         .unwrap_or_default()
