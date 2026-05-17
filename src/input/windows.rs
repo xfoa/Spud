@@ -1,21 +1,25 @@
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Sender as MpscSender};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use iced::futures::Stream;
-use windows::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_RCONTROL,
     VK_RMENU, VK_RSHIFT, VK_RWIN, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, ClipCursor, GetCursorPos, GetMessageW, PeekMessageW, PostThreadMessageW,
-    SetWindowsHookExW, ShowCursor, TranslateMessage, DispatchMessageW,
-    UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL,
-    WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
-    WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP,
-    WM_SYSKEYDOWN, WM_XBUTTONDOWN, WM_XBUTTONUP, WHEEL_DELTA, PM_NOREMOVE,
+    CallNextHookEx, ClipCursor, CreateWindowExW, DestroyWindow, GetCursorPos, GetMessageW,
+    PeekMessageW, PostThreadMessageW, RegisterHotKey, SetWindowsHookExW, ShowCursor,
+    TranslateMessage, DispatchMessageW, UnhookWindowsHookEx, UnregisterHotKey,
+    KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_HOTKEY,
+    WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
+    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP,
+    WM_SYSKEYDOWN, WM_XBUTTONDOWN, WM_XBUTTONUP, WHEEL_DELTA, HWND_MESSAGE,
+    PM_NOREMOVE, WINDOW_EX_STYLE, WINDOW_STYLE,
 };
 
 use crate::input::InputEvent;
@@ -64,6 +68,8 @@ thread_local! {
     static LAST_POS: RefCell<POINT> = RefCell::new(POINT { x: 0, y: 0 });
     static HOTKEY_VK: RefCell<u16> = RefCell::new(0);
     static HOTKEY_MODS: RefCell<u16> = RefCell::new(0);
+    static PRESSED_KEYS: RefCell<HashSet<u16>> = RefCell::new(HashSet::new());
+    static LAST_TOGGLE: RefCell<Option<Instant>> = RefCell::new(None);
 }
 
 fn set_tx(tx: MpscSender<InputEvent>) {
@@ -110,6 +116,20 @@ fn set_hotkey_mods(mods: u16) {
     HOTKEY_MODS.with(|h| *h.borrow_mut() = mods);
 }
 
+fn can_toggle() -> bool {
+    LAST_TOGGLE.with(|t| {
+        let mut last = t.borrow_mut();
+        let now = Instant::now();
+        if let Some(prev) = *last {
+            if now.duration_since(prev) < Duration::from_millis(50) {
+                return false;
+            }
+        }
+        *last = Some(now);
+        true
+    })
+}
+
 fn run(
     hotkey: &str,
     tx: MpscSender<InputEvent>,
@@ -153,14 +173,68 @@ fn run(
     };
     eprintln!("[spud] Mouse hook installed");
 
+    // Create a message-only window and register the hotkey as a fallback
+    // toggle mechanism. The LL hook can fail when our own window has focus
+    // (console/GUI subsystem interaction), but RegisterHotKey is reliable.
+    let hotkey_hwnd = unsafe {
+        let hwnd = CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            windows::core::w!("Static"),
+            windows::core::w!("SpudHotkey"),
+            WINDOW_STYLE(0),
+            0, 0, 0, 0,
+            HWND_MESSAGE,
+            None,
+            Some(hinstance),
+            None,
+        );
+        if hwnd.is_invalid() {
+            eprintln!("[spud] Failed to create message-only window for hotkey");
+            None
+        } else {
+            let result = RegisterHotKey(hwnd, 1, hotkey_mods as u32, hotkey_vk as u32);
+            if result.is_err() {
+                eprintln!("[spud] RegisterHotKey failed, relying on LL hook for toggle");
+                let _ = DestroyWindow(hwnd);
+                None
+            } else {
+                eprintln!("[spud] RegisterHotKey active for toggle");
+                Some(hwnd)
+            }
+        }
+    };
+
     eprintln!("[spud] Message pump starting");
     let mut msg: MSG = unsafe { std::mem::zeroed() };
     loop {
         let ret = unsafe { GetMessageW(&mut msg, None, 0, 0) };
         if ret.0 > 0 {
-            unsafe {
-                let _ = TranslateMessage(&msg);
-                DispatchMessageW(&msg);
+            if msg.message == WM_HOTKEY {
+                if can_toggle() {
+                    let new_grabbed = !is_grabbed();
+                    set_grabbed(new_grabbed);
+                    if new_grabbed {
+                        unsafe {
+                            let _ = ShowCursor(false);
+                            let _ = ClipCursor(None);
+                        }
+                        if let Ok(pos) = get_cursor_pos() {
+                            set_last_pos(pos);
+                        }
+                    } else {
+                        unsafe {
+                            let _ = ShowCursor(true);
+                            let _ = ClipCursor(None);
+                        }
+                    }
+                    eprintln!("[spud] Hotkey toggled via RegisterHotKey, grabbed={new_grabbed}");
+                    send_event(InputEvent::HotkeyToggled { grabbed: new_grabbed });
+                }
+            } else {
+                unsafe {
+                    let _ = TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
             }
         } else if ret.0 == 0 {
             eprintln!("[spud] Message pump exiting (WM_QUIT)");
@@ -172,6 +246,10 @@ fn run(
     }
 
     unsafe {
+        if let Some(hwnd) = hotkey_hwnd {
+            let _ = UnregisterHotKey(hwnd, 1);
+            let _ = DestroyWindow(hwnd);
+        }
         let _ = UnhookWindowsHookEx(kbd_hook);
         let _ = UnhookWindowsHookEx(mouse_hook);
     }
@@ -207,52 +285,66 @@ unsafe extern "system" fn keyboard_hook_proc(
         WM_KEYDOWN | WM_SYSKEYDOWN
     );
 
-    // Hotkey detection only on keydown.
     if down {
-        let mods = current_modifiers();
-        eprintln!("[spud] KBD hook: vk=0x{vk:04X}, mods={mods:04b}, grabbed={}, hotkey_vk=0x{:04X}, hotkey_mods={:04b}", is_grabbed(), hotkey_vk(), hotkey_mods());
-        if vk == hotkey_vk() {
-            if mods != hotkey_mods() {
-                eprintln!("[spud] Hotkey key pressed but modifiers mismatch: vk=0x{vk:04X}, mods={mods:04b}, expected_mods={:04b}", hotkey_mods());
+        let is_repeat = !PRESSED_KEYS.with(|p| p.borrow_mut().insert(vk));
+        if is_repeat && !is_grabbed() {
+            return CallNextHookEx(None, n_code, w_param, l_param);
+        }
+
+        // Hotkey detection only on genuine keydown (ignore auto-repeat).
+        if !is_repeat {
+            let mods = current_modifiers();
+            if vk == hotkey_vk() && mods == hotkey_mods() {
+                if can_toggle() {
+                    let new_grabbed = !is_grabbed();
+                    set_grabbed(new_grabbed);
+
+                    if new_grabbed {
+                        unsafe {
+                            let _ = ShowCursor(false);
+                            let _ = ClipCursor(None);
+                        }
+                        if let Ok(pos) = get_cursor_pos() {
+                            set_last_pos(pos);
+                        }
+                    } else {
+                        unsafe {
+                            let _ = ShowCursor(true);
+                            let _ = ClipCursor(None);
+                        }
+                    }
+
+                    eprintln!("[spud] Hotkey toggled via LL hook, grabbed={new_grabbed}");
+                    send_event(InputEvent::HotkeyToggled { grabbed: new_grabbed });
+                }
+                return LRESULT(1); // Consume the hotkey event.
             }
         }
-        if vk == hotkey_vk() && mods == hotkey_mods() {
-            let new_grabbed = !is_grabbed();
-            set_grabbed(new_grabbed);
 
-            if new_grabbed {
-                unsafe {
-                    let _ = ShowCursor(false);
-                    let _ = ClipCursor(None);
-                }
-                if let Ok(pos) = get_cursor_pos() {
-                    set_last_pos(pos);
-                }
-            } else {
-                unsafe {
-                    let _ = ShowCursor(true);
-                    let _ = ClipCursor(None);
-                }
-            }
-
-            eprintln!("[spud] Hotkey toggled, grabbed={new_grabbed}");
-            send_event(InputEvent::HotkeyToggled { grabbed: new_grabbed });
-            return LRESULT(1); // Consume the hotkey event.
+        if !is_grabbed() {
+            return CallNextHookEx(None, n_code, w_param, l_param);
         }
-    }
 
-    if !is_grabbed() {
-        return CallNextHookEx(None, n_code, w_param, l_param);
-    }
+        // While grabbed, translate and consume keyboard events.
+        // Skip auto-repeat keydowns.
+        if !is_repeat {
+            if let Some(evdev) = windows_vk_to_evdev(vk) {
+                let event = InputEvent::KeyPress { keycode: evdev as u8 };
+                send_event(event);
+            }
+        }
+    } else {
+        PRESSED_KEYS.with(|p| { p.borrow_mut().remove(&vk); });
 
-    // While grabbed, translate and consume keyboard events.
-    if let Some(evdev) = windows_vk_to_evdev(vk) {
-        let event = if down {
-            InputEvent::KeyPress { keycode: evdev as u8 }
-        } else {
-            InputEvent::KeyRelease { keycode: evdev as u8 }
-        };
-        send_event(event);
+        if !is_grabbed() {
+            return CallNextHookEx(None, n_code, w_param, l_param);
+        }
+
+        // While grabbed, translate and consume keyboard events.
+        if let Some(evdev) = windows_vk_to_evdev(vk) {
+            let event = InputEvent::KeyRelease { keycode: evdev as u8 };
+            send_event(event);
+        }
     }
 
     LRESULT(1) // Consume event so it doesn't reach local apps.
