@@ -109,7 +109,9 @@ fn run(
     hotkey: &str,
     tx: MpscSender<InputEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    eprintln!("[spud] Windows input backend starting, hotkey={hotkey}");
     let (hotkey_vk, hotkey_mods) = parse_hotkey(hotkey)?;
+    eprintln!("[spud] Parsed hotkey: vk=0x{hotkey_vk:04X}, mods={hotkey_mods:04b}");
     set_hotkey_vk(hotkey_vk);
     set_hotkey_mods(hotkey_mods);
     set_tx(tx);
@@ -197,6 +199,7 @@ unsafe extern "system" fn keyboard_hook_proc(
                 }
             }
 
+            eprintln!("[spud] Hotkey toggled, grabbed={new_grabbed}");
             send_event(InputEvent::HotkeyToggled { grabbed: new_grabbed });
             return LRESULT(1); // Consume the hotkey event.
         }
