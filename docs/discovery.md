@@ -24,7 +24,7 @@ Resolved service records carry the following TXT properties:
 | Property   | Value                                          |
 |------------|------------------------------------------------|
 | `name`     | User-configured display name.                  |
-| `hostname` | System hostname (used as fallback if `name` is missing). |
+| `hostname` | System hostname with `.local.` suffix (used as fallback for the connection address if the property is missing). |
 | `icon`     | One of `desktop`, `laptop`, `server`.          |
 | `auth`     | `true` if the server requires authentication.  |
 | `encrypt`  | `true` if the server encrypts the UDP plane.   |
@@ -58,5 +58,5 @@ To avoid A/AAAA record collisions across machines that share the same system hos
 
 ## Same-machine filtering
 
-The server view checks `owns_fullname()` before forwarding `Found` events to the client view.
+The app checks `server.owns_fullname()` before forwarding `Found` events to the client view.
 This prevents a server from listing itself in its own discovery grid.

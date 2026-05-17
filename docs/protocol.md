@@ -178,7 +178,7 @@ sequenceDiagram
 
     Note over S: Server stores PHC<br/>(Argon2id hash + salt)
 
-    S->>C: AuthChallenge { noncgie (32 B), salt (16 B) }
+    S->>C: AuthChallenge { nonce (32 B), salt (16 B) }
 
     alt Client has saved PHC
         Note over C: No plaintext needed<br/>Stored PHC contains key
@@ -285,7 +285,7 @@ Only **mouse movement** events (`MouseMove` and `MouseAbs`) are batched.
 All other events (key presses, mouse buttons, wheel, heartbeats) are sent immediately as single-event datagrams.
 Batching amortises the fixed UDP/IP header overhead (28 bytes) and `ConnId` prefix across multiple events, which is critical for high-frequency traffic like mouse movement.
 
-The client buffers mouse events for up to 1 ms or until the configured batch size (1-20, default 8) accumulates, whichever comes first.
+The client buffers mouse events for up to 1 ms or until the configured batch size (1-20, default 4) accumulates, whichever comes first.
 
 Optionally, the client may append **redundant batches** (0-10, configurable) to each mouse datagram.
 These are previously sent mouse batches included for reliability on lossy networks.
@@ -469,11 +469,11 @@ The client maintains `pressed_keys: HashSet<u16>` and `pressed_mouse_buttons: Ha
   If it is already present (OS auto-repeat), the event is suppressed.
 * On a native key release event, remove the code and send `KeyUp` immediately.
 * Mouse buttons are deduplicated the same way using `pressed_mouse_buttons` and sent immediately.
-* Every `key_repeat_interval_ms` (configurable on the client, default 250 ms) while a session is active, send `KeyRepeat` for every code in `pressed_keys` and `MouseButtonRepeat` for every button in `pressed_mouse_buttons`.
+* Every `key_repeat_interval_ms` (configurable on the client, default 500 ms) while a session is active, send `KeyRepeat` for every code in `pressed_keys` and `MouseButtonRepeat` for every button in `pressed_mouse_buttons`.
   These are sent immediately and are not batched.
 * On `Disconnect` or `ConnectionLost`, clear both sets.
 
-This keeps held-key traffic at a configurable rate (default 4 packets per second per held key), regardless of OS auto-repeat rate, while still allowing some dropped UDP datagrams before the server times the key out.
+This keeps held-key traffic at a configurable rate (default 2 packets per second per held key), regardless of OS auto-repeat rate, while still allowing some dropped UDP datagrams before the server times the key out.
 
 ### Mouse
 
@@ -490,4 +490,4 @@ This keeps held-key traffic at a configurable rate (default 4 packets per second
 There is no explicit protocol version negotiation.
 TLS ALPN (`spud/1`) is used to allow future incompatible iterations to be distinguished at the TLS layer.
 
-The `SessionInit` message carries all runtime parameters, so adding new fields to it (or new `ControlMsg` variants) is backward-compatible for clients that ignore unknown fields.
+Because `ControlMsg` uses `postcard` (a compact format without field metadata), adding new fields to existing messages or new variants to the enum is **not** backward-compatible with older peers. A protocol revision should bump the ALPN identifier (e.g. `spud/2`).
