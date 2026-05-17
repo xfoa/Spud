@@ -10,13 +10,13 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     VK_RMENU, VK_RSHIFT, VK_RWIN,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, ClipCursor, GetCursorPos, GetMessageW, PostThreadMessageW, RegisterHotKey,
-    SetCursorPos, ShowCursor, TranslateMessage, DispatchMessageW, UnhookWindowsHookEx,
-    HHOOK, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN,
-    WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE,
-    WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
-    WM_XBUTTONDOWN, WM_XBUTTONUP, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN,
-    GET_WHEEL_DELTA_WPARAM,
+    CallNextHookEx, ClipCursor, GetCursorPos, GetMessageW, PeekMessageW, PostThreadMessageW,
+    RegisterHotKey, SetCursorPos, ShowCursor, TranslateMessage, DispatchMessageW,
+    UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL,
+    WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
+    WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP,
+    WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN, WM_XBUTTONUP, MOD_ALT, MOD_CONTROL,
+    MOD_SHIFT, MOD_WIN, GET_WHEEL_DELTA_WPARAM, PM_NOREMOVE,
 };
 
 use crate::input::InputEvent;
@@ -31,8 +31,12 @@ pub fn listen(hotkey: String) -> impl Stream<Item = InputEvent> + Send + 'static
             // Forward events from the synchronous hook thread to the async output.
             thread::spawn(move || {
                 while let Ok(event) = rx.recv() {
-                    if output.try_send(event).is_err() {
-                        break;
+                    match output.try_send(event) {
+                        Ok(()) => {}
+                        Err(e) if e.is_disconnected() => break,
+                        Err(_) => {
+                            // Channel full - drop event, keep running.
+                        }
                     }
                 }
                 // Signal the hook thread to shut down when the stream is dropped.
@@ -52,6 +56,8 @@ pub fn listen(hotkey: String) -> impl Stream<Item = InputEvent> + Send + 'static
 }
 
 static HOOK_THREAD_ID: AtomicU32 = AtomicU32::new(0);
+static FIRST_KBD_HOOK: AtomicBool = AtomicBool::new(true);
+static FIRST_MOUSE_HOOK: AtomicBool = AtomicBool::new(true);
 
 thread_local! {
     static TX: RefCell<Option<MpscSender<InputEvent>>> = RefCell::new(None);
@@ -118,6 +124,13 @@ fn run(
 
     HOOK_THREAD_ID.store(unsafe { windows::Win32::System::Threading::GetCurrentThreadId() }, Ordering::Relaxed);
 
+    // Force creation of a message queue before installing hooks.
+    // Without this, SetWindowsHookEx may not dispatch callbacks correctly.
+    unsafe {
+        let mut dummy: MSG = std::mem::zeroed();
+        let _ = PeekMessageW(&mut dummy, None, 0, 0, PM_NOREMOVE);
+    }
+
     let kbd_hook = unsafe {
         SetWindowsHookExW(
             WH_KEYBOARD_LL,
@@ -126,6 +139,7 @@ fn run(
             0,
         )?
     };
+    eprintln!("[spud] Keyboard hook installed");
 
     let mouse_hook = unsafe {
         SetWindowsHookExW(
@@ -135,12 +149,23 @@ fn run(
             0,
         )?
     };
+    eprintln!("[spud] Mouse hook installed");
 
+    eprintln!("[spud] Message pump starting");
     let mut msg: MSG = unsafe { std::mem::zeroed() };
-    while unsafe { GetMessageW(&mut msg, None, 0, 0) } > 0 {
-        unsafe {
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
+    loop {
+        let ret = unsafe { GetMessageW(&mut msg, None, 0, 0) };
+        if ret > 0 {
+            unsafe {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+        } else if ret == 0 {
+            eprintln!("[spud] Message pump exiting (WM_QUIT)");
+            break;
+        } else {
+            eprintln!("[spud] Message pump error: GetMessageW failed");
+            break;
         }
     }
 
@@ -166,6 +191,9 @@ unsafe extern "system" fn keyboard_hook_proc(
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
+    if FIRST_KBD_HOOK.swap(false, Ordering::Relaxed) {
+        eprintln!("[spud] First keyboard hook event received");
+    }
     if n_code < 0 {
         return CallNextHookEx(None, n_code, w_param, l_param);
     }
@@ -180,6 +208,11 @@ unsafe extern "system" fn keyboard_hook_proc(
     // Hotkey detection only on keydown.
     if down {
         let mods = current_modifiers();
+        if vk == hotkey_vk() {
+            if mods != hotkey_mods() {
+                eprintln!("[spud] Hotkey key pressed but modifiers mismatch: vk=0x{vk:04X}, mods={mods:04b}, expected_mods={:04b}", hotkey_mods());
+            }
+        }
         if vk == hotkey_vk() && mods == hotkey_mods() {
             let new_grabbed = !is_grabbed();
             set_grabbed(new_grabbed);
@@ -227,6 +260,9 @@ unsafe extern "system" fn mouse_hook_proc(
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
+    if FIRST_MOUSE_HOOK.swap(false, Ordering::Relaxed) {
+        eprintln!("[spud] First mouse hook event received");
+    }
     if n_code < 0 {
         return CallNextHookEx(None, n_code, w_param, l_param);
     }
