@@ -1,8 +1,27 @@
 [package]
 name = "spud"
-version = "0.1.0"
-edition = "2021"
+version = "1.0.0"
+edition = "2024"
 rust-version = "1.88"
+description = "Cross-platform remote control application optimised for gaming"
+license = "GPL-3.0"
+repository = "https://github.com/xfoa/spud"
+authors = ["foax <a@fo.ax>"]
+
+[package.metadata.bundle]
+name = "Spud"
+identifier = "ax.fo.spud"
+icon = ["resources/icon.png"]
+resources = ["resources"]
+copyright = "GPL-3.0"
+category = "public.app-category.utilities"
+short_description = "Cross-platform remote control application optimised for gaming"
+long_description = """
+Spud sends local input (keyboard and mouse) to a remote server over LAN.
+It is optimised for gaming, with tunable protocol parameters for latency
+and reliability. No video or audio is streamed back.
+"""
+linux_use_terminal = false
 
 [dependencies]
 iced = { version = "0.14", default-features = true, features = ["image", "tokio"] }
