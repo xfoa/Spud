@@ -492,6 +492,12 @@ impl State {
                             let new_grab = crate::input::toggle_wayland_grab();
                             self.user_capturing = new_grab;
                             self.grabbed = new_grab;
+                        } else if self.capture_mode == CaptureMode::Fullscreen {
+                            self.user_capturing = !self.user_capturing;
+                            self.grabbed = self.user_capturing;
+                            if !self.grabbed {
+                                self.release_all_held();
+                            }
                         } else if self.capture_mode == CaptureMode::Window {
                             #[cfg(not(target_os = "windows"))]
                             {
