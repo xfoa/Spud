@@ -98,6 +98,11 @@ pub fn listen(hotkey: String) -> BoxStream<'static, InputEvent> {
     }
 }
 
+#[cfg(target_os = "windows")]
+pub fn listen_hotkey(hotkey: String) -> BoxStream<'static, InputEvent> {
+    Box::pin(windows::listen_hotkey(hotkey))
+}
+
 pub fn listen_wayland(handles: WaylandHandles) -> BoxStream<'static, InputEvent> {
     #[cfg(target_os = "linux")]
     {

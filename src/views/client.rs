@@ -493,10 +493,20 @@ impl State {
                             self.user_capturing = new_grab;
                             self.grabbed = new_grab;
                         } else if self.capture_mode == CaptureMode::Window {
-                            self.user_capturing = !self.user_capturing;
-                            self.grabbed = self.user_capturing;
-                            if !self.grabbed {
-                                self.release_all_held();
+                            #[cfg(not(target_os = "windows"))]
+                            {
+                                self.user_capturing = !self.user_capturing;
+                                self.grabbed = self.user_capturing;
+                                if !self.grabbed {
+                                    self.release_all_held();
+                                }
+                            }
+                            #[cfg(target_os = "windows")]
+                            {
+                                // On Windows in window mode, toggle is handled by the
+                                // native listen_hotkey stream (RegisterHotKey).
+                                // Just consume the event so it is not forwarded.
+                                let _ = ();
                             }
                         }
                         return;

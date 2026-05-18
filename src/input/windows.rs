@@ -58,7 +58,40 @@ pub fn listen(hotkey: String) -> impl Stream<Item = InputEvent> + Send + 'static
     })
 }
 
+/// Hotkey-only listener using RegisterHotKey (no LL hooks).
+/// For window mode on Windows where iced events may not deliver the hotkey
+/// in a windows_subsystem = "windows" app.
+pub fn listen_hotkey(hotkey: String) -> impl Stream<Item = InputEvent> + Send + 'static {
+    iced::stream::channel(256, move |mut output: iced::futures::channel::mpsc::Sender<InputEvent>| async move {
+        let hotkey = hotkey.clone();
+        thread::spawn(move || {
+            let (tx, rx) = mpsc::channel::<InputEvent>();
+
+            thread::spawn(move || {
+                while let Ok(event) = rx.recv() {
+                    match output.try_send(event) {
+                        Ok(()) => {}
+                        Err(e) if e.is_disconnected() => break,
+                        Err(_) => {}
+                    }
+                }
+                let tid = HOTKEY_THREAD_ID.load(Ordering::Relaxed);
+                if tid != 0 {
+                    unsafe {
+                        let _ = PostThreadMessageW(tid, WM_QUIT, WPARAM(0), LPARAM(0));
+                    }
+                }
+            });
+
+            if let Err(e) = run_hotkey_only(&hotkey, tx) {
+                eprintln!("[spud] Windows hotkey monitor stopped: {e}");
+            }
+        });
+    })
+}
+
 static HOOK_THREAD_ID: AtomicU32 = AtomicU32::new(0);
+static HOTKEY_THREAD_ID: AtomicU32 = AtomicU32::new(0);
 static FIRST_KBD_HOOK: AtomicBool = AtomicBool::new(true);
 static FIRST_MOUSE_HOOK: AtomicBool = AtomicBool::new(true);
 
@@ -265,6 +298,102 @@ fn run(
     }
 
     HOOK_THREAD_ID.store(0, Ordering::Relaxed);
+    Ok(())
+}
+
+fn run_hotkey_only(
+    hotkey: &str,
+    tx: MpscSender<InputEvent>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    eprintln!("[spud] Windows hotkey monitor starting, hotkey={hotkey}");
+    let (hotkey_vk, hotkey_mods) = parse_hotkey(hotkey)?;
+    eprintln!("[spud] Parsed hotkey: vk=0x{hotkey_vk:04X}, mods={hotkey_mods:04b}");
+    set_hotkey_vk(hotkey_vk);
+    set_hotkey_mods(hotkey_mods);
+    set_tx(tx);
+
+    HOTKEY_THREAD_ID.store(
+        unsafe { windows::Win32::System::Threading::GetCurrentThreadId() },
+        Ordering::Relaxed,
+    );
+
+    let hmod = unsafe { windows::Win32::System::LibraryLoader::GetModuleHandleW(None)? };
+    let hinstance = windows::Win32::Foundation::HINSTANCE(hmod.0);
+
+    // Force creation of a message queue.
+    unsafe {
+        let mut dummy: MSG = std::mem::zeroed();
+        let _ = PeekMessageW(&mut dummy, None, 0, 0, PM_NOREMOVE);
+    }
+
+    // Create message-only window and register hotkey.
+    let hotkey_hwnd = unsafe {
+        match CreateWindowExW(
+            WINDOW_EX_STYLE(0),
+            windows::core::w!("Static"),
+            windows::core::w!("SpudHotkey"),
+            WINDOW_STYLE(0),
+            0, 0, 0, 0,
+            Some(HWND_MESSAGE),
+            None,
+            Some(hinstance),
+            None,
+        ) {
+            Ok(hwnd) => {
+                let result = RegisterHotKey(
+                    Some(hwnd),
+                    1,
+                    HOT_KEY_MODIFIERS(hotkey_mods as u32),
+                    hotkey_vk as u32,
+                );
+                if result.is_err() {
+                    eprintln!("[spud] RegisterHotKey failed");
+                    let _ = DestroyWindow(hwnd);
+                    None
+                } else {
+                    eprintln!("[spud] RegisterHotKey active");
+                    Some(hwnd)
+                }
+            }
+            Err(_) => {
+                eprintln!("[spud] Failed to create message-only window for hotkey");
+                None
+            }
+        }
+    };
+
+    let mut msg: MSG = unsafe { std::mem::zeroed() };
+    loop {
+        let ret = unsafe { GetMessageW(&mut msg, None, 0, 0) };
+        if ret.0 > 0 {
+            if msg.message == WM_HOTKEY {
+                if can_toggle() {
+                    let new_grabbed = !is_grabbed();
+                    set_grabbed(new_grabbed);
+                    eprintln!("[spud] Hotkey toggled via RegisterHotKey, grabbed={new_grabbed}");
+                    send_event(InputEvent::HotkeyToggled { grabbed: new_grabbed });
+                }
+            } else {
+                unsafe {
+                    let _ = TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
+                }
+            }
+        } else if ret.0 == 0 {
+            break;
+        } else {
+            break;
+        }
+    }
+
+    unsafe {
+        if let Some(hwnd) = hotkey_hwnd {
+            let _ = UnregisterHotKey(Some(hwnd), 1);
+            let _ = DestroyWindow(hwnd);
+        }
+    }
+
+    HOTKEY_THREAD_ID.store(0, Ordering::Relaxed);
     Ok(())
 }
 

@@ -40,6 +40,16 @@ fn build_hotkey_stream(
     )
 }
 
+#[cfg(target_os = "windows")]
+fn build_hotkey_only_stream(
+    hotkey: &String,
+) -> std::pin::Pin<Box<dyn Stream<Item = Message> + Send + 'static>> {
+    Box::pin(
+        crate::input::listen_hotkey(hotkey.clone())
+            .map(|event| Message::Client(client::Message::HotkeyEvent(event))),
+    )
+}
+
 fn build_wayland_hotkey_stream(
     handles: &WaylandHandles,
 ) -> std::pin::Pin<Box<dyn Stream<Item = Message> + Send + 'static>> {
@@ -485,6 +495,11 @@ impl Spud {
                 }
             });
             subs.push(capture);
+            #[cfg(target_os = "windows")]
+            {
+                let hotkey = self.client.hotkey_string().to_string();
+                subs.push(Subscription::run_with(hotkey, build_hotkey_only_stream));
+            }
         } else if self.mode == Mode::Client && self.client.is_capturing_fullscreen() {
             // Always subscribe to iced keyboard events so the Capture handler
             // can update user_capturing on both X11 and Wayland.
