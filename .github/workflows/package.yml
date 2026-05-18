@@ -78,26 +78,22 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
       - uses: Swatinem/rust-cache@v2
-      - name: Install cargo-bundle
-        run: cargo install cargo-bundle
-      - name: Install WiX
-        run: |
-          dotnet tool install --global wix --version 6.0.2
-          wix extension add --global WixToolset.UI.wixext/6.0.2
+      - name: Install cargo-wix
+        run: cargo install cargo-wix
       - name: Build .msi
-        run: cargo bundle --format wxsmsi --release --target x86_64-pc-windows-msvc
+        run: cargo wix --target x86_64-pc-windows-msvc
       - name: Rename .msi
         shell: powershell
         run: |
           $VERSION = $env:GITHUB_REF_NAME
-          $OLD = Get-ChildItem "target/x86_64-pc-windows-msvc/release/bundle/wxsmsi/bin/Release/*.msi" | Select-Object -First 1
-          $NEW = "target/x86_64-pc-windows-msvc/release/bundle/wxsmsi/bin/Release/spud-${VERSION}-windows.msi"
-          Move-Item -Path $OLD.FullName -Destination $NEW
+          $SRC = Get-ChildItem "target/wix/*.msi" | Select-Object -First 1
+          $DST = "target/wix/spud-${VERSION}-windows.msi"
+          Move-Item -Path $SRC.FullName -Destination $DST
       - name: Upload .msi artifact
         uses: actions/upload-artifact@v7
         with:
           name: spud-${{ github.ref_name }}-windows
-          path: target/x86_64-pc-windows-msvc/release/bundle/wxsmsi/bin/Release/spud-*-windows.msi
+          path: target/wix/spud-*-windows.msi
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
