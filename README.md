@@ -28,7 +28,7 @@ There already exist tools that solve similar problems to Spud, so why not use th
 ## Features
 
 * Simple UI
-* Cross-platform (WIP)
+* Cross-platform
 * Low latency input streaming
 * Input capture toggling by hotkey
 * Relative or absolute pointer movement
