@@ -37,11 +37,12 @@ fn main() -> iced::Result {
         eprintln!("[spud] (e.g. VM tablet input can interfere with pointer grab)");
     }
 
-    let icon = iced::window::icon::from_file_data(
-        include_bytes!("../resources/icon.png"),
-        None,
-    )
-    .ok();
+    let icon = image::load_from_memory(include_bytes!("../resources/icon.png"))
+        .ok()
+        .and_then(|img| {
+            let rgba = img.to_rgba8();
+            iced::window::icon::from_rgba(rgba.to_vec(), rgba.width(), rgba.height()).ok()
+        });
 
     let _app_name = "Spud";
     iced::application(app::Spud::default, app::Spud::update, app::Spud::view)

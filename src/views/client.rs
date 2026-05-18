@@ -354,8 +354,8 @@ impl State {
                     self.user_capturing = false;
                 }
             }
-            Message::ReconnectSuccess(sender, gen) => {
-                if self.reconnecting && self.reconnect_generation == gen {
+            Message::ReconnectSuccess(sender, generation) => {
+                if self.reconnecting && self.reconnect_generation == generation {
                     self.server_screen_size = sender.screen_size;
                     if let Some((w, h)) = self.server_screen_size {
                         println!("[client] Server screen size: {w}x{h}");
@@ -378,8 +378,8 @@ impl State {
                     self.last_error = None;
                 }
             }
-            Message::ReconnectFailed(gen) => {
-                if self.reconnecting && self.reconnect_generation == gen {
+            Message::ReconnectFailed(generation) => {
+                if self.reconnecting && self.reconnect_generation == generation {
                     self.reconnecting = false;
                     self.reconnect_cancel = None;
                     self.grabbed = false;
