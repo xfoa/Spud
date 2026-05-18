@@ -80,8 +80,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-wix
         run: cargo install cargo-wix
+      - name: Generate WiX source
+        run: cargo wix init --force
       - name: Build .msi
-        run: cargo wix --target x86_64-pc-windows-msvc
+        run: cargo wix
       - name: Rename .msi
         shell: powershell
         run: |

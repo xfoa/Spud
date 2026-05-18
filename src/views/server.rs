@@ -716,7 +716,7 @@ impl State {
         .spacing(6);
 
         let batch_history_slider = row![
-            slider(1..=10, self.batch_history_multiplier, Message::BatchHistoryMultiplierChanged)
+            slider(1..=100, self.batch_history_multiplier, Message::BatchHistoryMultiplierChanged)
                 .width(Length::Fill),
             ui::h_space(12.0),
             text(format!("{}", self.batch_history_multiplier)).size(14).color(mt::ON_SURFACE),
@@ -724,11 +724,11 @@ impl State {
         .align_y(iced::Alignment::Center);
 
         let batch_history_field = column![
-            ui::field_label("Batch redundancy history"),
+            ui::field_label("Mouse event batch packet history"),
             batch_history_slider,
             ui::v_space(4.0),
             ui::helper_text(
-                "How many past mouse events the server remembers for deduplication. Higher values improve packet loss tolerance, but may introduce more lag."
+                "How many packets of mouse event batches the server remembers for deduplication. Multipies batch redundancy. Higher values improve packet loss tolerance, but may introduce more lag."
             ),
         ]
         .spacing(6);

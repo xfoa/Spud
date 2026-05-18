@@ -125,7 +125,7 @@ impl Default for ServerConfig {
             passphrase_hash: String::new(),
             key_timeout_ms: 1000,
             encrypt_udp: true,
-            batch_history_multiplier: 4,
+            batch_history_multiplier: 20,
         }
     }
 }
