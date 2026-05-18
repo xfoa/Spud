@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use core_graphics::display::CGDisplay;
 use core_graphics::event::{
-    CGEvent, CGEventTapLocation, CGEventType, EventField, KeyCode,
+    CGEvent, CGEventTapLocation, CGEventType, CGMouseButton, EventField, KeyCode,
 };
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use core_graphics::geometry::CGPoint;
@@ -83,9 +83,9 @@ impl InputInjector {
                             InjectCmd::MouseRel { dx, dy } => {
                                 cursor.x += f64::from(dx);
                                 cursor.y += f64::from(dy);
-                                // Don't clamp or warp for relative mode — the game/app
-                                // handles its own cursor position.  Just post the delta.
-                                post_mouse_relative(&hid, dx, dy, &pressed_buttons);
+                                // Core Graphics is more reliable than IOKit for
+                                // relative mouse movement on modern macOS.
+                                post_mouse_relative(&cg_source, cursor, dx, dy, &pressed_buttons);
                             }
                             InjectCmd::KeyDown { code } => {
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
@@ -270,7 +270,6 @@ const NX_DEVICERALTKEYMASK: u32 = 0x00000040;
 const NX_DEVICERCTLKEYMASK: u32 = 0x00002000;
 
 const K_IOHID_SET_CURSOR_POSITION: u32 = 0x00000002;
-const K_IOHID_SET_RELATIVE_CURSOR_POSITION: u32 = 0x00000004;
 const K_NX_EVENT_DATA_VERSION: u32 = 2;
 const K_IO_HID_PARAM_CONNECT_TYPE: u32 = 1;
 
@@ -365,32 +364,6 @@ impl IoKitHid {
         }
     }
 
-    fn post_mouse_relative(&self, event_type: u32, dx: i32, dy: i32) {
-        unsafe {
-            let mut data: NXEventData = std::mem::zeroed();
-            data.mouse_move = NXEventDataMouseMove {
-                dx,
-                dy,
-                subx: 0,
-                suby: 0,
-                sub_type: 0,
-                reserved1: 0,
-                reserved2: 0,
-                tablet: [0; 32],
-            };
-            let point = IOGPoint { x: 0, y: 0 };
-            IOHIDPostEvent(
-                self.connect,
-                event_type,
-                point,
-                &data,
-                K_NX_EVENT_DATA_VERSION,
-                0,
-                K_IOHID_SET_RELATIVE_CURSOR_POSITION,
-            );
-        }
-    }
-
     fn post_mouse_button(&self, event_type: u32, cursor: CGPoint, button: u8) {
         unsafe {
             let mut data: NXEventData = std::mem::zeroed();
@@ -458,11 +431,33 @@ fn post_mouse_move(hid: &IoKitHid, cursor: CGPoint, pressed_buttons: &HashSet<u8
     let _ = CGDisplay::warp_mouse_cursor_position(cursor);
 }
 
-fn post_mouse_relative(hid: &IoKitHid, dx: i32, dy: i32, pressed_buttons: &HashSet<u8>) {
-    if let Some((event_type, _button)) = current_drag_type(pressed_buttons) {
-        hid.post_mouse_relative(event_type, dx, dy);
+fn post_mouse_relative(
+    source: &CGEventSource,
+    cursor: CGPoint,
+    dx: i32,
+    dy: i32,
+    pressed_buttons: &HashSet<u8>,
+) {
+    let event_type = if pressed_buttons.contains(&1) {
+        CGEventType::LeftMouseDragged
+    } else if pressed_buttons.contains(&3) {
+        CGEventType::RightMouseDragged
+    } else if !pressed_buttons.is_empty() {
+        CGEventType::OtherMouseDragged
     } else {
-        hid.post_mouse_relative(NX_MOUSEMOVED, dx, dy);
+        CGEventType::MouseMoved
+    };
+    let button = if pressed_buttons.contains(&1) {
+        CGMouseButton::Left
+    } else if pressed_buttons.contains(&3) {
+        CGMouseButton::Right
+    } else {
+        CGMouseButton::Center
+    };
+    if let Ok(event) = CGEvent::new_mouse_event(source.clone(), event_type, cursor, button) {
+        event.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_X, i64::from(dx));
+        event.set_integer_value_field(EventField::MOUSE_EVENT_DELTA_Y, i64::from(dy));
+        event.post(CGEventTapLocation::HID);
     }
 }
 
