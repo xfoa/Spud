@@ -1,0 +1,116 @@
+name: Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  package-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-bundle
+        run: cargo install cargo-bundle
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+      - name: Build .deb
+        run: cargo bundle --format deb --release
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spud-deb
+          path: target/release/bundle/deb/*.deb
+
+  package-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-bundle
+        run: cargo install cargo-bundle
+      - name: Build universal .app
+        run: |
+          cargo bundle --format osx --release --target aarch64-apple-darwin
+          cargo bundle --format osx --release --target x86_64-apple-darwin
+      - name: Create universal app
+        run: |
+          mkdir -p target/release/bundle/osx-universal
+          cp -R target/aarch64-apple-darwin/release/bundle/osx/Spud.app target/release/bundle/osx-universal/Spud.app
+          lipo target/aarch64-apple-darwin/release/bundle/osx/Spud.app/Contents/MacOS/spud \
+                target/x86_64-apple-darwin/release/bundle/osx/Spud.app/Contents/MacOS/spud \
+                -create -output target/release/bundle/osx-universal/Spud.app/Contents/MacOS/spud
+      - name: Create DMG
+        run: |
+          mkdir -p target/release/bundle/dmg-staging
+          cp -R target/release/bundle/osx-universal/Spud.app target/release/bundle/dmg-staging/
+          ln -s /Applications target/release/bundle/dmg-staging/Applications
+          hdiutil create \
+            -volname "Spud" \
+            -srcfolder target/release/bundle/dmg-staging \
+            -ov \
+            -format UDZO \
+            target/release/bundle/Spud-macos-universal.dmg
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spud-macos-dmg
+          path: target/release/bundle/Spud-macos-universal.dmg
+
+  package-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-bundle
+        run: cargo install cargo-bundle
+      - name: Build .msi
+        run: cargo bundle --format msi --release --target x86_64-pc-windows-msvc
+      - name: Upload .msi artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spud-msi
+          path: target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [package-linux, package-macos, package-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          CHANGELOG="docs/changelogs/${TAG}.md"
+
+          if [ -f "$CHANGELOG" ]; then
+            gh release create "$TAG" \
+              --title "Spud ${TAG}" \
+              --notes-file "$CHANGELOG" \
+              artifacts/*
+          else
+            gh release create "$TAG" \
+              --title "Spud ${TAG}" \
+              --generate-notes \
+              artifacts/*
+          fi

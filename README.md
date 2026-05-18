@@ -54,8 +54,14 @@ There already exist tools that solve similar problems to Spud, so why not use th
 
 ### Linux
 
-Binaries are available from the GitHub project [releases](https://github.com/xfoa/spud/releases) page.
-Put them wherever your system expects to find binaries.
+A `.deb` package is built by CI and can be downloaded from GitHub Actions artifacts or the [releases](https://github.com/xfoa/spud/releases) page:
+
+```bash
+sudo dpkg -i spud_1.0.0_amd64.deb
+```
+
+Alternatively, a raw binary is available from the same sources.
+Put it wherever your system expects to find binaries.
 
 On **Linux**, the server can inject input events via a privileged helper that
 runs through `pkexec`. To start the server without having to enter your
@@ -66,7 +72,7 @@ sudo install -Dm644 resources/50-spud-injection.pkla \
     /etc/polkit-1/localauthority/50-local.d/50-spud-injection.pkla
 ```
 
-Alternatively, run the provided install script which also builds and installs the binary and desktop entry:
+Or run the provided install script which also builds and installs the binary and desktop entry:
 
 ```bash
 ./install.sh
@@ -74,8 +80,7 @@ Alternatively, run the provided install script which also builds and installs th
 
 ### macOS
 
-At the moment only available via `cargo run`.
-Better options coming soon! 
+A universal `.app` bundle is built by CI and can be downloaded from GitHub Actions artifacts or the [releases](https://github.com/xfoa/spud/releases) page.
 
 On **macOS**, fullscreen/hotkey input capture requires **Accessibility** permission (and **Input Monitoring** permission on macOS 10.15+).
 The app will prompt you to enable these in System Settings when you first attempt to capture input.
@@ -83,8 +88,9 @@ Server-side input injection does not require special permissions.
 
 ### Windows
 
-At the moment only available via `cargo run`.
-Better options coming soon! 
+An `.msi` installer is built by CI and can be downloaded from GitHub Actions artifacts or the [releases](https://github.com/xfoa/spud/releases) page.
+
+Run the installer and launch Spud from the Start Menu.
 
 ## Build
 
@@ -98,6 +104,23 @@ Then run using:
 
 ```
 cargo run
+```
+
+### Packaging
+
+Install [cargo-bundle](https://github.com/burtonageo/cargo-bundle) and build platform packages:
+
+```bash
+cargo install cargo-bundle
+
+# Linux
+cargo bundle --format deb --release
+
+# macOS
+cargo bundle --format osx --release
+
+# Windows
+cargo bundle --format msi --release
 ```
 
 ## Screenshots
