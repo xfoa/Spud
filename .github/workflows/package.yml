@@ -92,7 +92,7 @@ jobs:
           $VERSION = $env:GITHUB_REF_NAME
           $OLD = Get-ChildItem "target/x86_64-pc-windows-msvc/release/bundle/wxsmsi/bin/Release/*.msi" | Select-Object -First 1
           $NEW = "target/x86_64-pc-windows-msvc/release/bundle/wxsmsi/bin/Release/spud-${VERSION}-windows.msi"
-          Rename-Item $OLD $NEW
+          Move-Item -Path $OLD.FullName -Destination $NEW
       - name: Upload .msi artifact
         uses: actions/upload-artifact@v7
         with:
