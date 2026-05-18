@@ -46,18 +46,27 @@ fn main() -> iced::Result {
             iced::window::icon::from_rgba(rgba.to_vec(), rgba.width(), rgba.height()).ok()
         });
 
-    let _app_name = "Spud";
     iced::application(app::Spud::default, app::Spud::update, app::Spud::view)
         .title(app::Spud::title)
         .theme(app::Spud::theme)
         .subscription(app::Spud::subscription)
         .font(icons::FA_SOLID_BYTES)
         .window_size(iced::Size::new(1000.0, 650.0))
-        .window(iced::window::Settings {
-            icon,
-            min_size: Some(iced::Size::new(800.0, 600.0)),
-            platform_specific: PlatformSpecific::default(),
-            ..Default::default()
+        .window({
+            #[cfg(target_os = "linux")]
+            let platform_specific = PlatformSpecific {
+                application_id: "Spud".to_string(),
+                ..PlatformSpecific::default()
+            };
+            #[cfg(not(target_os = "linux"))]
+            let platform_specific = PlatformSpecific::default();
+
+            iced::window::Settings {
+                icon,
+                min_size: Some(iced::Size::new(800.0, 600.0)),
+                platform_specific,
+                ..Default::default()
+            }
         })
         .run()
 }
