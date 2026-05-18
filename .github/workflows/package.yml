@@ -10,7 +10,7 @@ jobs:
   package-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-bundle
@@ -22,7 +22,7 @@ jobs:
       - name: Build .deb
         run: cargo bundle --format deb --release
       - name: Upload .deb artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: spud-deb
           path: target/release/bundle/deb/*.deb
@@ -30,7 +30,7 @@ jobs:
   package-macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
@@ -60,7 +60,7 @@ jobs:
             -format UDZO \
             target/release/bundle/Spud-macos-universal.dmg
       - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: spud-macos-dmg
           path: target/release/bundle/Spud-macos-universal.dmg
@@ -68,7 +68,7 @@ jobs:
   package-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
@@ -82,7 +82,7 @@ jobs:
       - name: Build .msi
         run: cargo bundle --format wxsmsi --release --target x86_64-pc-windows-msvc
       - name: Upload .msi artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: spud-msi
           path: target/x86_64-pc-windows-msvc/release/bundle/wxsmsi/bin/Release/*.msi
@@ -94,9 +94,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
           merge-multiple: true
