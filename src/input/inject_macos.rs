@@ -223,7 +223,7 @@ fn get_cursor_position(source: &CGEventSource) -> Option<CGPoint> {
 /* ------------------------------------------------------------------ */
 
 #[link(name = "IOKit", kind = "framework")]
-extern "C" {
+unsafe extern "C" {
     fn IOServiceMatching(name: *const c_char) -> *mut c_void;
     fn IOServiceGetMatchingService(masterPort: u32, matching: *mut c_void) -> u32;
     fn IOServiceOpen(service: u32, owningTask: u32, r#type: u32, connect: *mut u32) -> c_int;
@@ -239,7 +239,7 @@ extern "C" {
     fn IOObjectRelease(object: u32) -> c_int;
 }
 
-extern "C" {
+unsafe extern "C" {
     fn mach_task_self() -> u32;
 }
 
