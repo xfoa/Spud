@@ -14,8 +14,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-bundle
-        env:
-          CACHE_VERSION: v1
         run: cargo install cargo-bundle
       - name: Install Linux dependencies
         run: |
