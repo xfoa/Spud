@@ -21,11 +21,15 @@ jobs:
           sudo apt-get install -y libssl-dev pkg-config
       - name: Build .deb
         run: cargo bundle --format deb --release
+      - name: Rename .deb
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          mv target/release/bundle/deb/spud_*_amd64.deb "target/release/bundle/deb/spud-${VERSION}-linux-amd64.deb"
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v7
         with:
-          name: spud-deb
-          path: target/release/bundle/deb/*.deb
+          name: spud-${{ github.ref_name }}-deb
+          path: target/release/bundle/deb/spud-*-linux-amd64.deb
 
   package-macos:
     runs-on: macos-latest
@@ -50,6 +54,7 @@ jobs:
                 -create -output target/release/bundle/osx-universal/Spud.app/Contents/MacOS/spud
       - name: Create DMG
         run: |
+          VERSION="${GITHUB_REF_NAME}"
           mkdir -p target/release/bundle/dmg-staging
           cp -R target/release/bundle/osx-universal/Spud.app target/release/bundle/dmg-staging/
           ln -s /Applications target/release/bundle/dmg-staging/Applications
@@ -58,12 +63,12 @@ jobs:
             -srcfolder target/release/bundle/dmg-staging \
             -ov \
             -format UDZO \
-            target/release/bundle/Spud-macos-universal.dmg
+            "target/release/bundle/spud-${VERSION}-macos.dmg"
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v7
         with:
-          name: spud-macos-dmg
-          path: target/release/bundle/Spud-macos-universal.dmg
+          name: spud-${{ github.ref_name }}-macos
+          path: target/release/bundle/spud-*-macos.dmg
 
   package-windows:
     runs-on: windows-latest
@@ -81,11 +86,18 @@ jobs:
           wix extension add --global WixToolset.UI.wixext/6.0.2
       - name: Build .msi
         run: cargo bundle --format wxsmsi --release --target x86_64-pc-windows-msvc
+      - name: Rename .msi
+        shell: powershell
+        run: |
+          $VERSION = $env:GITHUB_REF_NAME
+          $OLD = Get-ChildItem "target/x86_64-pc-windows-msvc/release/bundle/wxsmsi/bin/Release/*.msi" | Select-Object -First 1
+          $NEW = "target/x86_64-pc-windows-msvc/release/bundle/wxsmsi/bin/Release/spud-${VERSION}-windows.msi"
+          Rename-Item $OLD $NEW
       - name: Upload .msi artifact
         uses: actions/upload-artifact@v7
         with:
-          name: spud-msi
-          path: target/x86_64-pc-windows-msvc/release/bundle/wxsmsi/bin/Release/*.msi
+          name: spud-${{ github.ref_name }}-windows
+          path: target/x86_64-pc-windows-msvc/release/bundle/wxsmsi/bin/Release/spud-*-windows.msi
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
