@@ -1,7 +1,7 @@
 use iced::font::{Family, Weight};
 use iced::Font;
 
-pub const FA_SOLID_BYTES: &[u8] = include_bytes!("../resources/fa-solid-900.otf");
+pub const FA_SOLID_BYTES: &[u8] = include_bytes!("../resources/fa_solid_900.otf");
 
 pub const FA_SOLID: Font = Font {
     family: Family::Name("Font Awesome 7 Free"),

@@ -68,7 +68,7 @@ runs through `pkexec`. To start the server without having to enter your
 password (eg if starting on boot), install the polkit rule:
 
 ```bash
-sudo install -Dm644 resources/spud-injection.pkla \
+sudo install -Dm644 linux/50-spud-injection.pkla \
     /etc/polkit-1/localauthority/50-local.d/50-spud-injection.pkla
 ```
 
@@ -127,11 +127,11 @@ cargo bundle --format msi --release
 
 ### Client
 
-![Spud client tab showing the connection page](resources/client-screenshot.png)
+![Spud client tab showing the connection page](assets/screenshots/client-screenshot.png)
 
 ### Server
 
-![Spud server tab showing the status page](resources/server-screenshot.png)
+![Spud server tab showing the status page](assets/screenshots/server-screenshot.png)
 
 ## Contribute
 

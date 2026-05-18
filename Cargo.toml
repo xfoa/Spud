@@ -12,7 +12,6 @@ authors = ["foax <a@fo.ax>"]
 name = "Spud"
 identifier = "ax.fo.spud"
 icon = ["resources/icon.png"]
-resources = ["resources"]
 copyright = "GPL-3.0"
 category = "public.app-category.utilities"
 short_description = "Cross-platform remote control application optimised for gaming"

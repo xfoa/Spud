@@ -77,7 +77,7 @@ By default `pkexec` asks for the root password every time the server starts.
 To skip the password prompt, install the provided polkit rule:
 
 ```bash
-sudo install -Dm644 resources/spud-injection.pkla \
+sudo install -Dm644 linux/50-spud-injection.pkla \
     /etc/polkit-1/localauthority/50-local.d/50-spud-injection.pkla
 ```
 
