@@ -16,7 +16,7 @@ jobs:
       - name: Install cargo-bundle
         env:
           CACHE_VERSION: v1
-        run: cargo install --force cargo-bundle
+        run: cargo install cargo-bundle
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
