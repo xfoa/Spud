@@ -23,7 +23,7 @@ and reliability. No video or audio is streamed back.
 linux_use_terminal = false
 
 [dependencies]
-iced = { version = "0.14", default-features = false, features = ["tokio", "tiny-skia", "crisp", "web-colors", "image-without-codecs", "x11", "wayland"] }
+iced = { version = "0.14", default-features = false, features = ["tokio", "wgpu", "crisp", "web-colors", "image-without-codecs", "x11", "wayland"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 mdns-sd = "0.19.2"
 if-addrs = "0.15.0"
