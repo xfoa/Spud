@@ -8,7 +8,7 @@ APPS_DIR="$HOME/.local/share/applications"
 
 mkdir -p "$ICON_DIR" "$APPS_DIR"
 cp resources/icon.png "$ICON_DIR/spud.png"
-cp resources/spud.desktop "$APPS_DIR/spud.desktop"
+cp linux/spud.desktop "$APPS_DIR/spud.desktop"
 sudo ln -s `pwd`/target/debug/spud -t /usr/local/bin
 
 gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
