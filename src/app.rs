@@ -12,55 +12,72 @@ use crate::input::WaylandHandles;
 use crate::theme as mt;
 use crate::views::{client, server};
 
-fn build_discovery_stream(_: &()) -> impl Stream<Item = Message> + 'static {
-    crate::discovery::browse()
-        .map(|event| Message::Client(client::Message::DiscoveryEvent(event)))
+fn build_discovery_stream(
+    _: &(),
+) -> std::pin::Pin<Box<dyn Stream<Item = Message> + Send + 'static>> {
+    Box::pin(
+        crate::discovery::browse()
+            .map(|event| Message::Client(client::Message::DiscoveryEvent(event))),
+    )
 }
 
-fn build_net_events_stream(_: &()) -> impl Stream<Item = Message> + 'static {
-    crate::net::events().map(|event| match event {
+fn build_net_events_stream(
+    _: &(),
+) -> std::pin::Pin<Box<dyn Stream<Item = Message> + Send + 'static>> {
+    Box::pin(crate::net::events().map(|event| match event {
         crate::net::NetEvent::Disconnected => {
             Message::Client(client::Message::ConnectionLost)
         }
-    })
+    }))
 }
 
-fn build_hotkey_stream(hotkey: &String) -> impl Stream<Item = Message> + 'static {
-    crate::input::listen(hotkey.clone())
-        .map(|event| Message::Client(client::Message::HotkeyEvent(event)))
+fn build_hotkey_stream(
+    hotkey: &String,
+) -> std::pin::Pin<Box<dyn Stream<Item = Message> + Send + 'static>> {
+    Box::pin(
+        crate::input::listen(hotkey.clone())
+            .map(|event| Message::Client(client::Message::HotkeyEvent(event))),
+    )
 }
 
 fn build_wayland_hotkey_stream(
     handles: &WaylandHandles,
-) -> impl Stream<Item = Message> + 'static {
-    crate::input::listen_wayland(*handles)
-        .map(|event| Message::Client(client::Message::HotkeyEvent(event)))
+) -> std::pin::Pin<Box<dyn Stream<Item = Message> + Send + 'static>> {
+    Box::pin(
+        crate::input::listen_wayland(*handles)
+            .map(|event| Message::Client(client::Message::HotkeyEvent(event))),
+    )
 }
 
-fn build_signal_stream(_: &()) -> impl Stream<Item = Message> + 'static {
-    iced::stream::channel(1, |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
-        #[cfg(unix)]
-        {
-            use tokio::signal::unix::{signal, SignalKind};
-            let mut sigterm = match signal(SignalKind::terminate()) {
-                Ok(s) => s,
-                Err(_) => return,
-            };
-            let mut sigint = match signal(SignalKind::interrupt()) {
-                Ok(s) => s,
-                Err(_) => return,
-            };
-            tokio::select! {
-                _ = sigterm.recv() => {},
-                _ = sigint.recv() => {},
+fn build_signal_stream(
+    _: &(),
+) -> std::pin::Pin<Box<dyn Stream<Item = Message> + Send + 'static>> {
+    Box::pin(iced::stream::channel(
+        1,
+        |mut output: iced::futures::channel::mpsc::Sender<Message>| async move {
+            #[cfg(unix)]
+            {
+                use tokio::signal::unix::{signal, SignalKind};
+                let mut sigterm = match signal(SignalKind::terminate()) {
+                    Ok(s) => s,
+                    Err(_) => return,
+                };
+                let mut sigint = match signal(SignalKind::interrupt()) {
+                    Ok(s) => s,
+                    Err(_) => return,
+                };
+                tokio::select! {
+                    _ = sigterm.recv() => {},
+                    _ = sigint.recv() => {},
+                }
             }
-        }
-        #[cfg(not(unix))]
-        {
-            let _ = tokio::signal::ctrl_c().await;
-        }
-        let _ = output.try_send(Message::ForceQuit);
-    })
+            #[cfg(not(unix))]
+            {
+                let _ = tokio::signal::ctrl_c().await;
+            }
+            let _ = output.try_send(Message::ForceQuit);
+        },
+    ))
 }
 
 async fn reconnect(
@@ -321,7 +338,7 @@ impl Spud {
                         let a = self.client.selected_addrs();
                         if a.is_empty() { None } else { Some(a.to_vec()) }
                     };
-                    let gen = self.client.reconnect_generation();
+                    let generation = self.client.reconnect_generation();
                     let timeout = self.client.reconnect_timeout();
                     let client_require_auth = self.client.require_auth();
                     let passphrase = self.client.connection_passphrase().map(|s| s.to_string());
@@ -351,9 +368,9 @@ impl Spud {
                         ),
                         move |result| match result {
                             Ok((sender, _phc)) => {
-                                Message::Client(client::Message::ReconnectSuccess(sender, gen))
+                                Message::Client(client::Message::ReconnectSuccess(sender, generation))
                             }
-                            Err(()) => Message::Client(client::Message::ReconnectFailed(gen)),
+                            Err(()) => Message::Client(client::Message::ReconnectFailed(generation)),
                         },
                     );
                 }
