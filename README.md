@@ -75,7 +75,7 @@ sudo install -Dm644 resources/50-spud-injection.pkla \
 Or run the provided install script which also builds and installs the binary and desktop entry:
 
 ```bash
-./install.sh
+./scripts/install-linux.sh
 ```
 
 ### macOS
