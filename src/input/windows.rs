@@ -277,10 +277,10 @@ unsafe extern "system" fn keyboard_hook_proc(
         eprintln!("[spud] First keyboard hook event received");
     }
     if n_code < 0 {
-        return CallNextHookEx(None, n_code, w_param, l_param);
+        return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
     }
 
-    let info = *(l_param.0 as *const KBDLLHOOKSTRUCT);
+    let info = unsafe { *(l_param.0 as *const KBDLLHOOKSTRUCT) };
     let vk = info.vkCode as u16;
     let down = matches!(
         w_param.0 as u32,
@@ -290,7 +290,7 @@ unsafe extern "system" fn keyboard_hook_proc(
     if down {
         let is_repeat = !PRESSED_KEYS.with(|p| p.borrow_mut().insert(vk));
         if is_repeat && !is_grabbed() {
-            return CallNextHookEx(None, n_code, w_param, l_param);
+            return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
         }
 
         // Hotkey detection only on genuine keydown (ignore auto-repeat).
@@ -324,7 +324,7 @@ unsafe extern "system" fn keyboard_hook_proc(
         }
 
         if !is_grabbed() {
-            return CallNextHookEx(None, n_code, w_param, l_param);
+            return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
         }
 
         // While grabbed, translate and consume keyboard events.
@@ -339,7 +339,7 @@ unsafe extern "system" fn keyboard_hook_proc(
         PRESSED_KEYS.with(|p| { p.borrow_mut().remove(&vk); });
 
         if !is_grabbed() {
-            return CallNextHookEx(None, n_code, w_param, l_param);
+            return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
         }
 
         // While grabbed, translate and consume keyboard events.
@@ -361,15 +361,15 @@ unsafe extern "system" fn mouse_hook_proc(
         eprintln!("[spud] First mouse hook event received");
     }
     if n_code < 0 {
-        return CallNextHookEx(None, n_code, w_param, l_param);
+        return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
     }
 
     if !is_grabbed() {
-        return CallNextHookEx(None, n_code, w_param, l_param);
+        return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
     }
 
     let msg = w_param.0 as u32;
-    let info = *(l_param.0 as *const MSLLHOOKSTRUCT);
+    let info = unsafe { *(l_param.0 as *const MSLLHOOKSTRUCT) };
 
     match msg {
         WM_MOUSEMOVE => {

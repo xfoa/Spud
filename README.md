@@ -68,7 +68,7 @@ runs through `pkexec`. To start the server without having to enter your
 password (eg if starting on boot), install the polkit rule:
 
 ```bash
-sudo install -Dm644 resources/50-spud-injection.pkla \
+sudo install -Dm644 resources/spud-injection.pkla \
     /etc/polkit-1/localauthority/50-local.d/50-spud-injection.pkla
 ```
 
