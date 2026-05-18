@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.95"
 description = "Cross-platform remote control application optimised for gaming"
 license = "GPL-3.0-only"
+license_file = "wix/gpl-3.0.rtf"
 repository = "https://github.com/xfoa/spud"
 authors = ["foax <a@fo.ax>"]
 
@@ -12,7 +13,7 @@ authors = ["foax <a@fo.ax>"]
 name = "Spud"
 identifier = "ax.fo.spud"
 icon = ["resources/icon.png"]
-copyright = "GPL-3.0"
+copyright = "foax"
 category = "public.app-category.utilities"
 short_description = "Cross-platform remote control application optimised for gaming"
 long_description = """
