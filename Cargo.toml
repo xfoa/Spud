@@ -4,8 +4,7 @@ version = "1.0.1"
 edition = "2024"
 rust-version = "1.95"
 description = "Cross-platform remote control application optimised for gaming"
-license = "GPL-3.0"
-license-file = "LICENSE.md"
+license = "GPL-3.0-only"
 repository = "https://github.com/xfoa/spud"
 authors = ["foax <a@fo.ax>"]
 
