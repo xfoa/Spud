@@ -228,9 +228,10 @@ impl State {
 }
 
 impl State {
-    /// If the current host/port input matches a discovered server by IP,
-    /// select it. Otherwise clear the selection.
+    /// If the current host/port input matches a discovered server by IP or
+    /// hostname, select it. Otherwise clear the selection.
     fn sync_selection_from_input(&mut self) {
+        // Try matching by resolved IP first.
         if let Ok(ip) = self.host.parse::<std::net::IpAddr>() {
             if let Some(server) = self.discovered.iter().find(|s| {
                 s.port == self.port && s.addrs.iter().any(|a| a.ip() == ip)
@@ -239,6 +240,17 @@ impl State {
                 self.selected_addrs = server.addrs.clone();
                 return;
             }
+        }
+        // Fall back to matching by hostname (e.g. when addrs is empty).
+        let host_lower = self.host.to_lowercase();
+        if let Some(server) = self.discovered.iter().find(|s| {
+            s.port == self.port
+                && (s.host.to_lowercase() == host_lower
+                    || s.name.to_lowercase() == host_lower)
+        }) {
+            self.selected_fullname = Some(server.fullname.clone());
+            self.selected_addrs = server.addrs.clone();
+            return;
         }
         self.selected_fullname = None;
         self.selected_addrs.clear();

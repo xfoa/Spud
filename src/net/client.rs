@@ -248,10 +248,24 @@ impl ClientConnection {
     ) -> Result<(Self, Option<String>), ConnectError> {
         let addrs: Vec<SocketAddr> = match addrs {
             Some(a) if !a.is_empty() => a,
-            _ => tokio::net::lookup_host(format!("{}:{}", host, port))
-                .await
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?
-                .collect(),
+            _ => {
+                let resolved: Vec<SocketAddr> = tokio::net::lookup_host(format!("{}:{}", host, port))
+                    .await
+                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?
+                    .collect();
+                // Prefer non-loopback addresses to avoid connecting to
+                // 127.0.1.1 when the server is bound to a LAN interface.
+                let non_loopback: Vec<SocketAddr> = resolved
+                    .iter()
+                    .filter(|a| !a.ip().is_loopback())
+                    .copied()
+                    .collect();
+                if !non_loopback.is_empty() {
+                    non_loopback
+                } else {
+                    resolved
+                }
+            }
         };
 
         if addrs.is_empty() {

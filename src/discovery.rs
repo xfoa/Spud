@@ -131,11 +131,14 @@ pub fn browse() -> impl iced::futures::Stream<Item = Event> + Send + 'static {
                         .map(|r| r.val_str() == "true")
                         .unwrap_or(false);
                     let address = format!("{}:{}", host, port);
-                    let mut addrs: Vec<SocketAddr> = info
+                    let raw_addrs: Vec<std::net::IpAddr> = info
                         .get_addresses()
                         .iter()
+                        .map(|ip| ip.to_ip_addr())
+                        .collect();
+                    let mut addrs: Vec<SocketAddr> = raw_addrs
+                        .iter()
                         .filter(|ip| {
-                            let ip = ip.to_ip_addr();
                             !ip.is_loopback()
                                 && !ip.is_multicast()
                                 && !ip.is_unspecified()
@@ -144,8 +147,11 @@ pub fn browse() -> impl iced::futures::Stream<Item = Event> + Send + 'static {
                                     std::net::IpAddr::V6(a) => a.is_unicast_link_local(),
                                 }
                         })
-                        .map(|ip| SocketAddr::new(ip.to_ip_addr(), info.get_port()))
+                        .map(|ip| SocketAddr::new(*ip, info.get_port()))
                         .collect();
+                    if addrs.is_empty() && !raw_addrs.is_empty() {
+                        eprintln!("[spud] discovery: all addresses filtered for {fullname}: raw={raw_addrs:?}");
+                    }
                     // Deterministic ordering: IPv4 before IPv6
                     addrs.sort_by(|a, b| {
                         match (a.is_ipv4(), b.is_ipv4()) {
