@@ -1,0 +1,8 @@
+commit 05c946c8968cd0e6199004becf9d7d0215f42de8
+Author: foax <a@fo.ax>
+Date:   Mon May 18 20:39:26 2026 +0300
+
+    Move macOS back to IOKit HID injection because CG is shite
+
+ src/input/inject_macos.rs | 73 ++++++++++++++++++++++++++++-------------------
+ 1 file changed, 43 insertions(+), 30 deletions(-)
