@@ -399,7 +399,7 @@ impl IoKitHid {
         }
     }
 
-    fn post_mouse_button(&self, event_type: u32, cursor: CGPoint, button: u8) {
+    fn post_mouse_button(&self, event_type: u32, cursor: CGPoint, button: u8, pressed: bool) {
         unsafe {
             let mut data: NXEventData = std::mem::zeroed();
             data.mouse = NXEventDataMouse {
@@ -407,7 +407,7 @@ impl IoKitHid {
                 suby: 0,
                 event_num: 0,
                 click: 1,
-                pressure: 0,
+                pressure: if pressed { 255 } else { 0 },
                 button_number: button,
                 sub_type: 0,
                 reserved2: 0,
@@ -488,7 +488,7 @@ fn post_mouse_button(hid: &IoKitHid, cursor: CGPoint, wire: u16, pressed: bool) 
             (event_type, wire)
         }
     };
-    hid.post_mouse_button(event_type, cursor, button);
+    hid.post_mouse_button(event_type, cursor, button, pressed);
 }
 
 fn post_scroll(_hid: &IoKitHid, source: &CGEventSource, dx: i8, dy: i8) {
