@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { Surface, useTheme, IconButton, Text } from 'react-native-paper';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Surface, useTheme, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -8,11 +8,13 @@ import { Touchpad } from '@/components/touchpad';
 import { MenuDrawer } from '@/components/menu-drawer';
 import { WasdPad } from '@/components/wasd-pad';
 import { DraggableButton } from '@/components/draggable-button';
+import { ResizeHandle } from '@/components/resize-handle';
 import { useImmersiveMode } from '@/hooks/use-immersive-mode';
-import { useLayoutConfig } from '@/hooks/use-layout-config';
+import { useLayoutConfig, defaultConfig } from '@/hooks/use-layout-config';
 
 export default function GameControllerScreen() {
   const theme = useTheme();
+  const { width: winW, height: winH } = useWindowDimensions();
   const { enterImmersive, exitImmersive } = useImmersiveMode();
   const { config, loaded, saveConfig } = useLayoutConfig();
   const [menuVisible, setMenuVisible] = useState(false);
@@ -67,6 +69,8 @@ export default function GameControllerScreen() {
     );
   }
 
+  const tp = layoutMode ? draft : config;
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Surface style={[styles.leftPanel, { backgroundColor: theme.colors.surface }]} elevation={1}>
@@ -100,6 +104,14 @@ export default function GameControllerScreen() {
                 />
                 <IconButton
                   icon={({ size, color }) => (
+                    <MaterialCommunityIcons name="refresh" size={size} color={color} />
+                  )}
+                  size={28}
+                  onPress={() => setDraft(defaultConfig)}
+                  iconColor={theme.colors.onSurface}
+                />
+                <IconButton
+                  icon={({ size, color }) => (
                     <MaterialCommunityIcons name="check" size={size} color={color} />
                   )}
                   size={28}
@@ -122,47 +134,69 @@ export default function GameControllerScreen() {
       </Surface>
 
       <View style={styles.rightPanel}>
-        {layoutMode && (
-          <View style={styles.scaleControls}>
-            <IconButton
-              icon={({ size, color }) => (
-                <MaterialCommunityIcons name="minus" size={size} color={color} />
-              )}
-              size={20}
-              onPress={() =>
-                setDraft((prev) => ({
-                  ...prev,
-                  touchpadScale: Math.max(0.5, +(prev.touchpadScale - 0.1).toFixed(2)),
-                }))
-              }
-              iconColor={theme.colors.onSurface}
-            />
-            <Text variant="labelLarge" style={{ color: theme.colors.onSurface }}>
-              {Math.round((layoutMode ? draft.touchpadScale : config.touchpadScale) * 100)}%
-            </Text>
-            <IconButton
-              icon={({ size, color }) => (
-                <MaterialCommunityIcons name="plus" size={size} color={color} />
-              )}
-              size={20}
-              onPress={() =>
-                setDraft((prev) => ({
-                  ...prev,
-                  touchpadScale: Math.min(1.5, +(prev.touchpadScale + 0.1).toFixed(2)),
-                }))
-              }
-              iconColor={theme.colors.onSurface}
-            />
-          </View>
-        )}
         <View
-          style={{
-            flex: 1,
-            paddingRight: (layoutMode ? draft.touchpadScale : config.touchpadScale) * 48,
-            paddingVertical: (layoutMode ? draft.touchpadScale : config.touchpadScale) * 48,
-            transform: [{ scale: layoutMode ? draft.touchpadScale : config.touchpadScale }],
-          }}
+          style={[
+            styles.touchpadWrapper,
+            {
+              top: tp.touchpadTop,
+              bottom: tp.touchpadBottom,
+              left: tp.touchpadLeft,
+              right: tp.touchpadRight,
+            },
+          ]}
         >
+          {layoutMode && (
+            <>
+              <ResizeHandle
+                edge="top"
+                onResize={(_, dy) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    touchpadTop: Math.max(
+                      defaultConfig.touchpadTop,
+                      Math.min(winH - prev.touchpadBottom - 100, prev.touchpadTop + dy)
+                    ),
+                  }))
+                }
+              />
+              <ResizeHandle
+                edge="bottom"
+                onResize={(_, dy) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    touchpadBottom: Math.max(
+                      defaultConfig.touchpadBottom,
+                      Math.min(winH - prev.touchpadTop - 100, prev.touchpadBottom - dy)
+                    ),
+                  }))
+                }
+              />
+              <ResizeHandle
+                edge="left"
+                onResize={(dx) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    touchpadLeft: Math.max(
+                      defaultConfig.touchpadLeft,
+                      Math.min(Math.floor(winW / 2) - prev.touchpadRight - 100, prev.touchpadLeft + dx)
+                    ),
+                  }))
+                }
+              />
+              <ResizeHandle
+                edge="right"
+                onResize={(dx) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    touchpadRight: Math.max(
+                      defaultConfig.touchpadRight,
+                      Math.min(Math.floor(winW / 2) - prev.touchpadLeft - 100, prev.touchpadRight - dx)
+                    ),
+                  }))
+                }
+              />
+            </>
+          )}
           <Touchpad
             onTouchStart={(x, y) => console.log('Touch start:', x, y)}
             onTouchMove={(x, y) => console.log('Touch move:', x, y)}
@@ -209,12 +243,10 @@ const styles = StyleSheet.create({
   },
   rightPanel: {
     flex: 1,
+    position: 'relative',
   },
-  scaleControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingTop: 8,
+  touchpadWrapper: {
+    position: 'absolute',
+    overflow: 'visible',
   },
 });

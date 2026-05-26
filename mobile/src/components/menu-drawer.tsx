@@ -118,7 +118,7 @@ export function MenuDrawer({ visible, onDismiss, onEnterLayoutMode }: MenuDrawer
           </Text>
 
           <Button mode="contained-tonal" onPress={onEnterLayoutMode} style={styles.button}>
-            Button layout
+            Customise layout
           </Button>
 
           <Button mode="contained-tonal" onPress={handleSettings} style={styles.button}>
