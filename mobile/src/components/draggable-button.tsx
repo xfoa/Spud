@@ -11,9 +11,10 @@ interface DraggableButtonProps {
 export function DraggableButton({ children, offsetX, offsetY, onMove }: DraggableButtonProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const position = useMemo(() => new Animated.ValueXY({ x: offsetX, y: offsetY }), []);
-  const layout = useMemo(() => position.getLayout(), [position]);
+  const translate = useMemo(() => position.getTranslateTransform(), [position]);
 
   useEffect(() => {
+    position.flattenOffset();
     position.setValue({ x: offsetX, y: offsetY });
   }, [offsetX, offsetY, position]);
 
@@ -44,14 +45,12 @@ export function DraggableButton({ children, offsetX, offsetY, onMove }: Draggabl
   );
 
   return (
-    <Animated.View style={[styles.wrapper, layout]} {...panHandlers.panHandlers}>
+    <Animated.View style={[styles.wrapper, { transform: translate }]} {...panHandlers.panHandlers}>
       {children}
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrapper: {
-    position: 'absolute',
-  },
+  wrapper: {},
 });
