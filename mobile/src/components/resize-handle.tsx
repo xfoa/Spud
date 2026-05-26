@@ -5,21 +5,27 @@ import { useTheme } from 'react-native-paper';
 interface ResizeHandleProps {
   edge: 'top' | 'bottom' | 'left' | 'right';
   onResize: (dx: number, dy: number) => void;
+  onGrant?: () => void;
+  onRelease?: () => void;
 }
 
-export function ResizeHandle({ edge, onResize }: ResizeHandleProps) {
+export function ResizeHandle({ edge, onResize, onGrant, onRelease }: ResizeHandleProps) {
   const theme = useTheme();
   const startX = useRef(0);
   const startY = useRef(0);
 
   return (
     <View
-      style={[styles.hitArea, styles[edge]]}
+      style={[
+        styles.hitArea,
+        styles[edge],
+      ]}
       onStartShouldSetResponder={() => true}
       onMoveShouldSetResponder={() => true}
       onResponderGrant={(e) => {
         startX.current = e.nativeEvent.pageX;
         startY.current = e.nativeEvent.pageY;
+        onGrant?.();
       }}
       onResponderMove={(e) => {
         const dx = e.nativeEvent.pageX - startX.current;
@@ -28,6 +34,8 @@ export function ResizeHandle({ edge, onResize }: ResizeHandleProps) {
         startY.current = e.nativeEvent.pageY;
         onResize(dx, dy);
       }}
+      onResponderRelease={onRelease}
+      onResponderTerminate={onRelease}
     >
       <View
         style={[

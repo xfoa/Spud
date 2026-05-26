@@ -4,11 +4,10 @@ import { Surface, useTheme, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { Touchpad } from '@/components/touchpad';
 import { MenuDrawer } from '@/components/menu-drawer';
 import { WasdPad } from '@/components/wasd-pad';
 import { DraggableButton } from '@/components/draggable-button';
-import { ResizeHandle } from '@/components/resize-handle';
+import { TouchpadContainer } from '@/components/touchpad-container';
 import { useImmersiveMode } from '@/hooks/use-immersive-mode';
 import { useLayoutConfig, defaultConfig } from '@/hooks/use-layout-config';
 
@@ -63,13 +62,12 @@ export default function GameControllerScreen() {
     console.log('Key up:', key);
   }, []);
 
+
   if (!loaded) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]} />
     );
   }
-
-  const tp = layoutMode ? draft : config;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -134,75 +132,27 @@ export default function GameControllerScreen() {
       </Surface>
 
       <View style={styles.rightPanel}>
-        <View
-          style={[
-            styles.touchpadWrapper,
-            {
-              top: tp.touchpadTop,
-              bottom: tp.touchpadBottom,
-              left: tp.touchpadLeft,
-              right: tp.touchpadRight,
-            },
-          ]}
-        >
-          {layoutMode && (
-            <>
-              <ResizeHandle
-                edge="top"
-                onResize={(_, dy) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    touchpadTop: Math.max(
-                      defaultConfig.touchpadTop,
-                      Math.min(winH - prev.touchpadBottom - 100, prev.touchpadTop + dy)
-                    ),
-                  }))
-                }
-              />
-              <ResizeHandle
-                edge="bottom"
-                onResize={(_, dy) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    touchpadBottom: Math.max(
-                      defaultConfig.touchpadBottom,
-                      Math.min(winH - prev.touchpadTop - 100, prev.touchpadBottom - dy)
-                    ),
-                  }))
-                }
-              />
-              <ResizeHandle
-                edge="left"
-                onResize={(dx) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    touchpadLeft: Math.max(
-                      defaultConfig.touchpadLeft,
-                      Math.min(Math.floor(winW / 2) - prev.touchpadRight - 100, prev.touchpadLeft + dx)
-                    ),
-                  }))
-                }
-              />
-              <ResizeHandle
-                edge="right"
-                onResize={(dx) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    touchpadRight: Math.max(
-                      defaultConfig.touchpadRight,
-                      Math.min(Math.floor(winW / 2) - prev.touchpadLeft - 100, prev.touchpadRight - dx)
-                    ),
-                  }))
-                }
-              />
-            </>
-          )}
-          <Touchpad
-            onTouchStart={(x, y) => console.log('Touch start:', x, y)}
-            onTouchMove={(x, y) => console.log('Touch move:', x, y)}
-            onTouchEnd={() => console.log('Touch end')}
-          />
-        </View>
+        <TouchpadContainer
+          layoutMode={layoutMode}
+          insets={{
+            touchpadTop: draft.touchpadTop,
+            touchpadBottom: draft.touchpadBottom,
+            touchpadLeft: draft.touchpadLeft,
+            touchpadRight: draft.touchpadRight,
+          }}
+          defaultInsets={defaultConfig}
+          winW={winW}
+          winH={winH}
+          onChange={(next) =>
+            setDraft((prev) => ({
+              ...prev,
+              touchpadTop: next.touchpadTop,
+              touchpadBottom: next.touchpadBottom,
+              touchpadLeft: next.touchpadLeft,
+              touchpadRight: next.touchpadRight,
+            }))
+          }
+        />
       </View>
 
       <MenuDrawer
@@ -244,9 +194,5 @@ const styles = StyleSheet.create({
   rightPanel: {
     flex: 1,
     position: 'relative',
-  },
-  touchpadWrapper: {
-    position: 'absolute',
-    overflow: 'visible',
   },
 });
