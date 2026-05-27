@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useCallback } from 'react';
+import { useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -22,6 +22,7 @@ export function MenuDrawer({ visible, onDismiss, onEnterLayoutMode }: MenuDrawer
   const theme = useTheme();
   const translateY = useMemo(() => new Animated.Value(SHEET_HEIGHT), []);
   const backdropOpacity = useMemo(() => new Animated.Value(0), []);
+  const skipNextCloseAnimation = useRef(false);
 
   const animateTo = useCallback(
     (target: number) => {
@@ -43,6 +44,10 @@ export function MenuDrawer({ visible, onDismiss, onEnterLayoutMode }: MenuDrawer
   );
 
   useEffect(() => {
+    if (!visible && skipNextCloseAnimation.current) {
+      skipNextCloseAnimation.current = false;
+      return;
+    }
     if (visible) {
       animateTo(0);
     } else {
@@ -61,7 +66,9 @@ export function MenuDrawer({ visible, onDismiss, onEnterLayoutMode }: MenuDrawer
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Math.abs(gesture.dy) > 5,
         onPanResponderMove: (_, gesture) => {
           const newY = Math.max(0, gesture.dy);
           translateY.setValue(newY);
@@ -69,8 +76,30 @@ export function MenuDrawer({ visible, onDismiss, onEnterLayoutMode }: MenuDrawer
           backdropOpacity.setValue(opacity);
         },
         onPanResponderRelease: (_, gesture) => {
-          if (gesture.dy > CLOSE_THRESHOLD) {
-            onDismiss();
+          const isFlick = gesture.vy > 0.5;
+          const shouldClose = gesture.dy > CLOSE_THRESHOLD || isFlick;
+
+          if (shouldClose) {
+            skipNextCloseAnimation.current = true;
+            const remaining = SHEET_HEIGHT - gesture.dy;
+            const duration = isFlick
+              ? Math.min(250, Math.max(50, remaining / gesture.vy))
+              : 180;
+
+            Animated.parallel([
+              Animated.timing(translateY, {
+                toValue: SHEET_HEIGHT,
+                duration,
+                useNativeDriver: true,
+              }),
+              Animated.timing(backdropOpacity, {
+                toValue: 0,
+                duration,
+                useNativeDriver: true,
+              }),
+            ]).start(() => {
+              onDismiss();
+            });
           } else {
             animateTo(0);
           }
