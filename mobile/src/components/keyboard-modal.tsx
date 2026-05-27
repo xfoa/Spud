@@ -1,5 +1,12 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
-import { View, StyleSheet, useWindowDimensions, ScrollView, Pressable } from 'react-native';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
+import {
+  View,
+  StyleSheet,
+  useWindowDimensions,
+  ScrollView,
+  Pressable,
+  Animated,
+} from 'react-native';
 import { Portal, IconButton, useTheme, Text } from 'react-native-paper';
 
 interface KeyboardModalProps {
@@ -282,12 +289,58 @@ function computeLayout(keySize: number): {
   return { positions, contentWidth, contentHeight };
 }
 
+const KeyButton = React.memo(function KeyButton({ keyDef }: { keyDef: KeyPosition }) {
+  const theme = useTheme();
+  const [pressed, setPressed] = useState(false);
+
+  const handlePress = useCallback(() => {
+    setPressed(true);
+    console.log('Key tapped:', keyDef.code);
+    setTimeout(() => setPressed(false), 200);
+  }, [keyDef.code]);
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      style={{
+        position: 'absolute',
+        left: keyDef.x,
+        top: keyDef.y,
+        width: keyDef.width,
+        height: keyDef.height,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: theme.colors.outlineVariant,
+        backgroundColor: pressed
+          ? theme.colors.primaryContainer
+          : theme.colors.surfaceVariant,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 2,
+      }}
+    >
+      <Text
+        variant="bodySmall"
+        style={{
+          fontSize: 10,
+          fontWeight: '600',
+          textAlign: 'center',
+          color: pressed
+            ? theme.colors.onPrimaryContainer
+            : theme.colors.onSurfaceVariant,
+        }}
+      >
+        {keyDef.label}
+      </Text>
+    </Pressable>
+  );
+});
+
 export function KeyboardModal({ visible, onDismiss }: KeyboardModalProps) {
   const theme = useTheme();
   const { width: winW } = useWindowDimensions();
-  const [pressedKeys, setPressedKeys] = useState<Set<string>>(new Set());
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
-  const [scrollOffset, setScrollOffset] = useState(0);
+  const scrollX = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef<ScrollView>(null);
 
   const keySize = BASE_KEY_SIZE;
@@ -298,17 +351,28 @@ export function KeyboardModal({ visible, onDismiss }: KeyboardModalProps) {
 
   const cardWidth = Math.min(winW - 32, 1200);
 
-  const handleKeyPress = useCallback((code: string) => {
-    setPressedKeys((prev) => new Set([...prev, code]));
-    setTimeout(() => {
-      setPressedKeys((prev) => {
-        const next = new Set(prev);
-        next.delete(code);
-        return next;
-      });
-    }, 200);
-    console.log('Key tapped:', code);
-  }, []);
+  const thumbWidth = useMemo(() => {
+    if (viewportSize.width === 0) return 0;
+    return Math.max(
+      20,
+      ((viewportSize.width - 16) / contentWidth) * viewportSize.width
+    );
+  }, [viewportSize.width, contentWidth]);
+
+  const trackWidth = useMemo(() => {
+    return Math.max(0, viewportSize.width - 16);
+  }, [viewportSize.width]);
+
+  const thumbLeft = useMemo(() => {
+    if (trackWidth === 0 || thumbWidth === 0) return 0;
+    const maxOffset = Math.max(1, contentWidth - viewportSize.width);
+    const maxLeft = Math.max(0, trackWidth - thumbWidth);
+    return scrollX.interpolate({
+      inputRange: [0, maxOffset],
+      outputRange: [0, maxLeft],
+      extrapolate: 'clamp',
+    });
+  }, [scrollX, trackWidth, thumbWidth, contentWidth, viewportSize.width]);
 
   if (!visible) return null;
 
@@ -337,7 +401,7 @@ export function KeyboardModal({ visible, onDismiss }: KeyboardModalProps) {
             onLayout={(e) => setViewportSize(e.nativeEvent.layout)}
           >
             {viewportSize.width > 0 && (
-              <ScrollView
+              <Animated.ScrollView
                 ref={scrollViewRef}
                 horizontal={true}
                 showsHorizontalScrollIndicator={false}
@@ -348,7 +412,10 @@ export function KeyboardModal({ visible, onDismiss }: KeyboardModalProps) {
                   minHeight: contentHeight,
                 }}
                 scrollEventThrottle={16}
-                onScroll={(e) => setScrollOffset(e.nativeEvent.contentOffset.x)}
+                onScroll={Animated.event(
+                  [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+                  { useNativeDriver: true }
+                )}
               >
                 <View
                   style={{
@@ -357,78 +424,32 @@ export function KeyboardModal({ visible, onDismiss }: KeyboardModalProps) {
                   }}
                 >
                   {keyPositions.map((key) => (
-                    <Pressable
-                      key={key.code}
-                      onPress={() => handleKeyPress(key.code)}
-                      style={{
-                        position: 'absolute',
-                        left: key.x,
-                        top: key.y,
-                        width: key.width,
-                        height: key.height,
-                        borderRadius: 4,
-                        borderWidth: 1,
-                        borderColor: theme.colors.outlineVariant,
-                        backgroundColor: pressedKeys.has(key.code)
-                          ? theme.colors.primaryContainer
-                          : theme.colors.surfaceVariant,
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        padding: 2,
-                      }}
-                    >
-                      <Text
-                        variant="bodySmall"
-                        style={{
-                          fontSize: 10,
-                          fontWeight: '600',
-                          textAlign: 'center',
-                          color: pressedKeys.has(key.code)
-                            ? theme.colors.onPrimaryContainer
-                            : theme.colors.onSurfaceVariant,
-                        }}
-                      >
-                        {key.label}
-                      </Text>
-                    </Pressable>
+                    <KeyButton key={key.code} keyDef={key} />
                   ))}
                 </View>
-              </ScrollView>
+              </Animated.ScrollView>
             )}
-            {viewportSize.width > 0 && contentWidth > viewportSize.width && (
+          </View>
+          {viewportSize.width > 0 && contentWidth > viewportSize.width && (
+            <View style={styles.scrollbarContainer}>
               <View
                 style={[
                   styles.scrollbarTrack,
-                  { width: viewportSize.width - 16, left: 8 },
+                  { width: viewportSize.width - 16 },
                 ]}
               >
-                <View
+                <Animated.View
                   style={[
                     styles.scrollbarThumb,
                     {
-                      width: Math.max(
-                        20,
-                        ((viewportSize.width - 16) / contentWidth) * viewportSize.width
-                      ),
-                      left:
-                        (scrollOffset /
-                          Math.max(1, contentWidth - viewportSize.width)) *
-                        Math.max(
-                          0,
-                          viewportSize.width -
-                            16 -
-                            Math.max(
-                              20,
-                              ((viewportSize.width - 16) / contentWidth) *
-                                viewportSize.width
-                            )
-                        ),
+                      width: thumbWidth,
+                      transform: [{ translateX: thumbLeft }],
                     },
                   ]}
                 />
               </View>
-            )}
-          </View>
+            </View>
+          )}
         </View>
       </View>
     </Portal>
@@ -457,7 +478,7 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 16,
     padding: 16,
-    maxHeight: '85%',
+    maxHeight: '100%',
     minHeight: 318,
     zIndex: 1,
     flexDirection: 'column',
@@ -477,9 +498,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
   },
+  scrollbarContainer: {
+    marginTop: 8,
+    alignItems: 'center',
+  },
   scrollbarTrack: {
-    position: 'absolute',
-    bottom: 0,
     height: 4,
     backgroundColor: 'rgba(128, 128, 128, 0.2)',
     borderRadius: 2,
