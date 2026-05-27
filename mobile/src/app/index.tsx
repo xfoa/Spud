@@ -7,6 +7,7 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { MenuDrawer } from '@/components/menu-drawer';
 import { WasdPad } from '@/components/wasd-pad';
 import { TouchpadContainer } from '@/components/touchpad-container';
+import { KeyboardModal } from '@/components/keyboard-modal';
 import { useImmersiveMode } from '@/hooks/use-immersive-mode';
 import { useLayoutConfig, defaultConfig, createDefaultConfig, ButtonOffset } from '@/hooks/use-layout-config';
 
@@ -17,6 +18,7 @@ export default function GameControllerScreen() {
   const { config, loaded, saveConfig } = useLayoutConfig();
   const [menuVisible, setMenuVisible] = useState(false);
   const [layoutMode, setLayoutMode] = useState(false);
+  const [keyboardModalVisible, setKeyboardModalVisible] = useState(false);
   const [draft, setDraft] = useState(config);
   const panelRef = useRef<View>(null);
 
@@ -52,6 +54,14 @@ export default function GameControllerScreen() {
 
   const handleCancelLayout = useCallback(() => {
     setLayoutMode(false);
+  }, []);
+
+  const handleOpenKeyboard = useCallback(() => {
+    setKeyboardModalVisible(true);
+  }, []);
+
+  const handleDismissKeyboard = useCallback(() => {
+    setKeyboardModalVisible(false);
   }, []);
 
   const handleKeyDown = useCallback((key: string) => {
@@ -144,6 +154,14 @@ export default function GameControllerScreen() {
               <View style={styles.layoutControls}>
                 <IconButton
                   icon={({ size, color }) => (
+                    <MaterialCommunityIcons name="keyboard" size={size} color={color} />
+                  )}
+                  size={28}
+                  onPress={handleOpenKeyboard}
+                  iconColor={theme.colors.onSurface}
+                />
+                <IconButton
+                  icon={({ size, color }) => (
                     <MaterialCommunityIcons name="close" size={size} color={color} />
                   )}
                   size={28}
@@ -221,6 +239,11 @@ export default function GameControllerScreen() {
         visible={menuVisible}
         onDismiss={handleDismissMenu}
         onEnterLayoutMode={handleEnterLayoutMode}
+      />
+
+      <KeyboardModal
+        visible={keyboardModalVisible}
+        onDismiss={handleDismissKeyboard}
       />
     </View>
   );
