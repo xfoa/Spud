@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import { View, StyleSheet, PanResponder, Animated } from 'react-native';
 import { ControllerButton } from './controller-button';
 import { ButtonOffset } from '@/hooks/use-layout-config';
@@ -17,8 +17,6 @@ interface WasdPadProps {
   onKeyUp?: (key: string) => void;
 }
 
-const activeStyle = { elevation: 10, zIndex: 10 };
-
 const GRID_POSITIONS: Record<'w' | 'a' | 's' | 'd', { top: number; left: number }> = {
   w: { top: 0, left: BUTTON_SIZE + GAP },
   a: { top: ROW_HEIGHT, left: 0 },
@@ -36,7 +34,6 @@ function DraggableButtonInner({
   onGrant,
   onRelease,
   zIndex,
-  active,
 }: {
   children: React.ReactNode;
   gridTop: number;
@@ -47,7 +44,6 @@ function DraggableButtonInner({
   onGrant?: () => void;
   onRelease?: () => void;
   zIndex: number;
-  active: boolean;
 }) {
   const anim = useRef(new Animated.ValueXY({ x: offsetX, y: offsetY })).current;
   const onMoveRef = useRef(onMove);
@@ -75,10 +71,10 @@ function DraggableButtonInner({
         dragStartOffset.current = { ...offsetRef.current };
         onGrantRef.current?.();
       },
-      onPanResponderMove: (_, gesture) => {
+      onPanResponderMove: (_, gestureState) => {
         anim.setValue({
-          x: dragStartOffset.current.x + gesture.dx,
-          y: dragStartOffset.current.y + gesture.dy,
+          x: dragStartOffset.current.x + gestureState.dx,
+          y: dragStartOffset.current.y + gestureState.dy,
         });
       },
       onPanResponderRelease: (_, gesture) => {
@@ -91,7 +87,10 @@ function DraggableButtonInner({
     })
   ).current;
 
-  const translate = anim.getTranslateTransform();
+  const translate = [
+    { translateX: anim.x },
+    { translateY: anim.y },
+  ];
 
   return (
     <Animated.View
@@ -103,7 +102,6 @@ function DraggableButtonInner({
         height: BUTTON_SIZE,
         zIndex,
         transform: translate,
-        ...(active ? activeStyle : {}),
       }}
       {...panResponder.panHandlers}
     >
@@ -115,7 +113,6 @@ function DraggableButtonInner({
 export function WasdPad({ layoutMode, offsets, zOrder, onMove, onBringToFront, onKeyDown, onKeyUp }: WasdPadProps) {
   const off = offsets ?? { w: { x: 0, y: 0 }, a: { x: 0, y: 0 }, s: { x: 0, y: 0 }, d: { x: 0, y: 0 } };
   const order = zOrder ?? ['w', 'a', 's', 'd'];
-  const [activeKey, setActiveKey] = useState<'w' | 'a' | 's' | 'd' | null>(null);
 
   const containerWidth = (BUTTON_SIZE + GAP) * 3 - GAP;
   const containerHeight = ROW_HEIGHT * 2 - GAP;
@@ -140,13 +137,9 @@ export function WasdPad({ layoutMode, offsets, zOrder, onMove, onBringToFront, o
           offsetX={off[key].x}
           offsetY={off[key].y}
           onMove={(x, y) => onMove?.(key, x, y)}
-          onGrant={() => {
-            setActiveKey(key);
-            onBringToFront?.(key);
-          }}
-          onRelease={() => setActiveKey((prev) => (prev === key ? null : prev))}
+          onGrant={() => onBringToFront?.(key)}
+          onRelease={() => {}}
           zIndex={zIndex}
-          active={activeKey === key}
         >
           {button}
         </DraggableButtonInner>
