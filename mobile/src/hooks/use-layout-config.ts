@@ -3,13 +3,21 @@ import { Platform } from 'react-native';
 
 const STORAGE_KEY = '@spud:layout-config';
 
+export interface ButtonOffset {
+  x: number;
+  y: number;
+}
+
 export interface LayoutConfig {
   touchpadTop: number;
   touchpadBottom: number;
   touchpadLeft: number;
   touchpadRight: number;
-  wasdOffsetX: number;
-  wasdOffsetY: number;
+  wOffset: ButtonOffset;
+  aOffset: ButtonOffset;
+  sOffset: ButtonOffset;
+  dOffset: ButtonOffset;
+  zOrder: ('w' | 'a' | 's' | 'd')[];
 }
 
 export const defaultConfig: LayoutConfig = {
@@ -17,9 +25,26 @@ export const defaultConfig: LayoutConfig = {
   touchpadBottom: 36,
   touchpadLeft: 8,
   touchpadRight: 36,
-  wasdOffsetX: 0,
-  wasdOffsetY: 0,
+  wOffset: { x: 0, y: 0 },
+  aOffset: { x: 0, y: 0 },
+  sOffset: { x: 0, y: 0 },
+  dOffset: { x: 0, y: 0 },
+  zOrder: ['w', 'a', 's', 'd'],
 };
+
+export function createDefaultConfig(): LayoutConfig {
+  return {
+    touchpadTop: 36,
+    touchpadBottom: 36,
+    touchpadLeft: 8,
+    touchpadRight: 36,
+    wOffset: { x: 0, y: 0 },
+    aOffset: { x: 0, y: 0 },
+    sOffset: { x: 0, y: 0 },
+    dOffset: { x: 0, y: 0 },
+    zOrder: ['w', 'a', 's', 'd'],
+  };
+}
 
 const memoryStore: Record<string, string> = {};
 

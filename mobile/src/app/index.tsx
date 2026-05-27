@@ -6,10 +6,9 @@ import { useFocusEffect } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { MenuDrawer } from '@/components/menu-drawer';
 import { WasdPad } from '@/components/wasd-pad';
-import { DraggableButton } from '@/components/draggable-button';
 import { TouchpadContainer } from '@/components/touchpad-container';
 import { useImmersiveMode } from '@/hooks/use-immersive-mode';
-import { useLayoutConfig, defaultConfig } from '@/hooks/use-layout-config';
+import { useLayoutConfig, defaultConfig, createDefaultConfig, ButtonOffset } from '@/hooks/use-layout-config';
 
 export default function GameControllerScreen() {
   const theme = useTheme();
@@ -62,6 +61,30 @@ export default function GameControllerScreen() {
     console.log('Key up:', key);
   }, []);
 
+  const handleButtonMove = useCallback(
+    (key: 'w' | 'a' | 's' | 'd', x: number, y: number) => {
+      setDraft((prev) => ({
+        ...prev,
+        [`${key}Offset`]: { x, y } as ButtonOffset,
+      }));
+    },
+    []
+  );
+
+  const handleBringToFront = useCallback(
+    (key: 'w' | 'a' | 's' | 'd') => {
+      setDraft((prev) => {
+        const order = [...(prev.zOrder ?? ['w', 'a', 's', 'd'])];
+        const idx = order.indexOf(key);
+        if (idx !== -1) {
+          order.splice(idx, 1);
+        }
+        order.push(key);
+        return { ...prev, zOrder: order };
+      });
+    },
+    []
+  );
 
   if (!loaded) {
     return (
@@ -69,24 +92,28 @@ export default function GameControllerScreen() {
     );
   }
 
+  const activeConfig = layoutMode ? draft : config;
+  const buttonOffsets = {
+    w: activeConfig.wOffset,
+    a: activeConfig.aOffset,
+    s: activeConfig.sOffset,
+    d: activeConfig.dOffset,
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Surface style={[styles.leftPanel, { backgroundColor: theme.colors.surface }]} elevation={1}>
         <View style={styles.leftPanelContent}>
           <View style={styles.wasdWrapper}>
-            {layoutMode ? (
-              <DraggableButton
-                offsetX={draft.wasdOffsetX}
-                offsetY={draft.wasdOffsetY}
-                onMove={(dx, dy) => setDraft((prev) => ({ ...prev, wasdOffsetX: dx, wasdOffsetY: dy }))}
-              >
-                <WasdPad onKeyDown={handleKeyDown} onKeyUp={handleKeyUp} />
-              </DraggableButton>
-            ) : (
-              <View style={{ transform: [{ translateX: config.wasdOffsetX }, { translateY: config.wasdOffsetY }] }}>
-                <WasdPad onKeyDown={handleKeyDown} onKeyUp={handleKeyUp} />
-              </View>
-            )}
+            <WasdPad
+              layoutMode={layoutMode}
+              offsets={buttonOffsets}
+              zOrder={activeConfig.zOrder}
+              onMove={handleButtonMove}
+              onBringToFront={handleBringToFront}
+              onKeyDown={handleKeyDown}
+              onKeyUp={handleKeyUp}
+            />
           </View>
 
           <View style={styles.menuButtonContainer}>
@@ -105,7 +132,7 @@ export default function GameControllerScreen() {
                     <MaterialCommunityIcons name="refresh" size={size} color={color} />
                   )}
                   size={28}
-                  onPress={() => setDraft(defaultConfig)}
+                  onPress={() => setDraft(createDefaultConfig())}
                   iconColor={theme.colors.onSurface}
                 />
                 <IconButton
