@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Surface, useTheme, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -18,6 +18,7 @@ export default function GameControllerScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [layoutMode, setLayoutMode] = useState(false);
   const [draft, setDraft] = useState(config);
+  const panelRef = useRef<View>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -103,7 +104,7 @@ export default function GameControllerScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Surface style={[styles.leftPanel, { backgroundColor: theme.colors.surface }]} elevation={1}>
-        <View style={styles.leftPanelContent}>
+        <View ref={panelRef} style={styles.leftPanelContent}>
           {layoutMode && (
             <View style={styles.buttonsResetButton}>
               <IconButton
@@ -130,6 +131,7 @@ export default function GameControllerScreen() {
               layoutMode={layoutMode}
               offsets={buttonOffsets}
               zOrder={activeConfig.zOrder}
+              panelRef={panelRef}
               onMove={handleButtonMove}
               onBringToFront={handleBringToFront}
               onKeyDown={handleKeyDown}
@@ -246,6 +248,7 @@ const styles = StyleSheet.create({
   },
   menuButtonContainer: {
     alignSelf: 'flex-end',
+    zIndex: 20,
   },
   layoutControls: {
     flexDirection: 'row',

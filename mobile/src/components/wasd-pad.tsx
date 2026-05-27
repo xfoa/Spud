@@ -13,6 +13,7 @@ interface WasdPadProps {
   layoutMode?: boolean;
   offsets?: { w: ButtonOffset; a: ButtonOffset; s: ButtonOffset; d: ButtonOffset };
   zOrder?: ('w' | 'a' | 's' | 'd')[];
+  panelRef?: React.RefObject<View | null>;
   onMove?: (key: 'w' | 'a' | 's' | 'd', x: number, y: number) => void;
   onBringToFront?: (key: 'w' | 'a' | 's' | 'd') => void;
   onKeyDown?: (key: string) => void;
@@ -37,6 +38,10 @@ function DraggableButtonInner({
   onGrant,
   onRelease,
   zIndex,
+  minX,
+  maxX,
+  minY,
+  maxY,
 }: {
   children: React.ReactNode;
   gridTop: number;
@@ -48,18 +53,33 @@ function DraggableButtonInner({
   onGrant?: () => void;
   onRelease?: () => void;
   zIndex: number;
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
 }) {
   const onMoveRef = useRef(onMove);
   const onGrantRef = useRef(onGrant);
   const onReleaseRef = useRef(onRelease);
   const offsetRef = useRef({ x: offsetX, y: offsetY });
+  const minXRef = useRef(minX);
+  const maxXRef = useRef(maxX);
+  const minYRef = useRef(minY);
+  const maxYRef = useRef(maxY);
 
   onMoveRef.current = onMove;
   onGrantRef.current = onGrant;
   onReleaseRef.current = onRelease;
   offsetRef.current = { x: offsetX, y: offsetY };
+  minXRef.current = minX;
+  maxXRef.current = maxX;
+  minYRef.current = minY;
+  maxYRef.current = maxY;
 
   const dragStartOffset = useRef({ x: 0, y: 0 });
+
+  const clampX = (v: number) => Math.max(minXRef.current, Math.min(maxXRef.current, v));
+  const clampY = (v: number) => Math.max(minYRef.current, Math.min(maxYRef.current, v));
 
   const panResponder = useRef(
     PanResponder.create({
@@ -71,13 +91,13 @@ function DraggableButtonInner({
       },
       onPanResponderMove: (_, gestureState) => {
         anim.setValue({
-          x: dragStartOffset.current.x + gestureState.dx,
-          y: dragStartOffset.current.y + gestureState.dy,
+          x: clampX(dragStartOffset.current.x + gestureState.dx),
+          y: clampY(dragStartOffset.current.y + gestureState.dy),
         });
       },
       onPanResponderRelease: (_, gesture) => {
-        const newX = dragStartOffset.current.x + gesture.dx;
-        const newY = dragStartOffset.current.y + gesture.dy;
+        const newX = clampX(dragStartOffset.current.x + gesture.dx);
+        const newY = clampY(dragStartOffset.current.y + gesture.dy);
         anim.setValue({ x: newX, y: newY });
         onMoveRef.current(newX, newY);
         onReleaseRef.current?.();
@@ -108,7 +128,7 @@ function DraggableButtonInner({
   );
 }
 
-export function WasdPad({ layoutMode, offsets, zOrder, onMove, onBringToFront, onKeyDown, onKeyUp }: WasdPadProps) {
+export function WasdPad({ layoutMode, offsets, zOrder, panelRef, onMove, onBringToFront, onKeyDown, onKeyUp }: WasdPadProps) {
   const theme = useTheme();
   const off = useMemo(() => offsets ?? { w: { x: 0, y: 0 }, a: { x: 0, y: 0 }, s: { x: 0, y: 0 }, d: { x: 0, y: 0 } }, [offsets]);
   const order = zOrder ?? ['w', 'a', 's', 'd'];
@@ -117,6 +137,9 @@ export function WasdPad({ layoutMode, offsets, zOrder, onMove, onBringToFront, o
     w: false, a: false, s: false, d: false,
   });
   const [bgOrder, setBgOrder] = useState<('w' | 'a' | 's' | 'd')[]>(['w', 'a', 's', 'd']);
+  const [containerPos, setContainerPos] = useState({ x: 0, y: 0 });
+  const [panelSize, setPanelSize] = useState({ width: 0, height: 0 });
+  const containerRef = useRef<View>(null);
 
   const containerWidth = (BUTTON_SIZE + GAP) * 3 - GAP;
   const containerHeight = ROW_HEIGHT * 2 - GAP;
@@ -134,6 +157,23 @@ export function WasdPad({ layoutMode, offsets, zOrder, onMove, onBringToFront, o
     anims.s.setValue({ x: off.s.x, y: off.s.y });
     anims.d.setValue({ x: off.d.x, y: off.d.y });
   }, [off, anims]);
+
+  useEffect(() => {
+    if (!layoutMode || !panelRef?.current || !containerRef.current) return;
+    const node = containerRef.current;
+    const panel = panelRef.current;
+    const measure = () => {
+      node.measureLayout(panel, (x, y) => {
+        setContainerPos({ x, y });
+      });
+      panel.measure((_, __, ___, h) => {
+        setPanelSize((prev) => (prev.height !== h ? { width: prev.width, height: h } : prev));
+      });
+    };
+    measure();
+    const id = setInterval(measure, 500);
+    return () => clearInterval(id);
+  }, [layoutMode, panelRef]);
 
   const handlePressIn = useCallback((key: 'w' | 'a' | 's' | 'd') => {
     setPressed((p) => ({ ...p, [key]: true }));
@@ -186,6 +226,12 @@ export function WasdPad({ layoutMode, offsets, zOrder, onMove, onBringToFront, o
     );
 
     if (layoutMode) {
+      const cx = containerPos.x;
+      const cy = containerPos.y;
+      const minX = -cx - gridPos.left;
+      const maxX = containerWidth + cx - gridPos.left - BUTTON_SIZE;
+      const minY = -cy - gridPos.top;
+      const maxY = panelSize.height - cy - gridPos.top - BUTTON_SIZE;
       return (
         <DraggableButtonInner
           key={key}
@@ -198,6 +244,10 @@ export function WasdPad({ layoutMode, offsets, zOrder, onMove, onBringToFront, o
           onGrant={() => onBringToFront?.(key)}
           onRelease={() => {}}
           zIndex={zIndex}
+          minX={minX}
+          maxX={maxX}
+          minY={minY}
+          maxY={maxY}
         >
           {button}
           <View style={styles.dragIndicator} pointerEvents="none">
@@ -224,7 +274,10 @@ export function WasdPad({ layoutMode, offsets, zOrder, onMove, onBringToFront, o
   };
 
   return (
-    <View style={[styles.container, { width: containerWidth, height: containerHeight }]}>
+    <View
+      ref={containerRef}
+      style={[styles.container, { width: containerWidth, height: containerHeight }]}
+    >
       {renderBackground('w')}
       {renderBackground('a')}
       {renderBackground('s')}
