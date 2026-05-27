@@ -104,6 +104,27 @@ export default function GameControllerScreen() {
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Surface style={[styles.leftPanel, { backgroundColor: theme.colors.surface }]} elevation={1}>
         <View style={styles.leftPanelContent}>
+          {layoutMode && (
+            <View style={styles.buttonsResetButton}>
+              <IconButton
+                icon={({ size, color }) => (
+                  <MaterialCommunityIcons name="restore" size={size} color={color} />
+                )}
+                size={28}
+                onPress={() =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    wOffset: defaultConfig.wOffset,
+                    aOffset: defaultConfig.aOffset,
+                    sOffset: defaultConfig.sOffset,
+                    dOffset: defaultConfig.dOffset,
+                    zOrder: defaultConfig.zOrder,
+                  }))
+                }
+                iconColor={theme.colors.onSurface}
+              />
+            </View>
+          )}
           <View style={styles.wasdWrapper}>
             <WasdPad
               layoutMode={layoutMode}
@@ -126,14 +147,6 @@ export default function GameControllerScreen() {
                   size={28}
                   onPress={handleCancelLayout}
                   iconColor={theme.colors.error}
-                />
-                <IconButton
-                  icon={({ size, color }) => (
-                    <MaterialCommunityIcons name="refresh" size={size} color={color} />
-                  )}
-                  size={28}
-                  onPress={() => setDraft(createDefaultConfig())}
-                  iconColor={theme.colors.onSurface}
                 />
                 <IconButton
                   icon={({ size, color }) => (
@@ -180,6 +193,26 @@ export default function GameControllerScreen() {
             }))
           }
         />
+        {layoutMode && (
+          <View style={styles.touchpadResetButton}>
+            <IconButton
+              icon={({ size, color }) => (
+                <MaterialCommunityIcons name="overscan" size={size} color={color} />
+              )}
+              size={28}
+              onPress={() =>
+                setDraft((prev) => ({
+                  ...prev,
+                  touchpadTop: defaultConfig.touchpadTop,
+                  touchpadBottom: defaultConfig.touchpadBottom,
+                  touchpadLeft: defaultConfig.touchpadLeft,
+                  touchpadRight: defaultConfig.touchpadRight,
+                }))
+              }
+              iconColor={theme.colors.onSurface}
+            />
+          </View>
+        )}
       </View>
 
       <MenuDrawer
@@ -221,5 +254,16 @@ const styles = StyleSheet.create({
   rightPanel: {
     flex: 1,
     position: 'relative',
+  },
+  touchpadResetButton: {
+    position: 'absolute',
+    top: 6,
+    right: 8,
+  },
+  buttonsResetButton: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    zIndex: 20,
   },
 });

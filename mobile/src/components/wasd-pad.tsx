@@ -1,5 +1,7 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { View, StyleSheet, PanResponder, Animated } from 'react-native';
+import { useTheme } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ControllerButton } from './controller-button';
 import { ButtonOffset } from '@/hooks/use-layout-config';
 
@@ -30,6 +32,7 @@ function DraggableButtonInner({
   gridLeft,
   offsetX,
   offsetY,
+  anim,
   onMove,
   onGrant,
   onRelease,
@@ -40,12 +43,12 @@ function DraggableButtonInner({
   gridLeft: number;
   offsetX: number;
   offsetY: number;
+  anim: Animated.ValueXY;
   onMove: (x: number, y: number) => void;
   onGrant?: () => void;
   onRelease?: () => void;
   zIndex: number;
 }) {
-  const anim = useRef(new Animated.ValueXY({ x: offsetX, y: offsetY })).current;
   const onMoveRef = useRef(onMove);
   const onGrantRef = useRef(onGrant);
   const onReleaseRef = useRef(onRelease);
@@ -55,11 +58,6 @@ function DraggableButtonInner({
   onGrantRef.current = onGrant;
   onReleaseRef.current = onRelease;
   offsetRef.current = { x: offsetX, y: offsetY };
-
-  // Sync when offset props change from outside (e.g., reset)
-  useEffect(() => {
-    anim.setValue({ x: offsetX, y: offsetY });
-  }, [offsetX, offsetY, anim]);
 
   const dragStartOffset = useRef({ x: 0, y: 0 });
 
@@ -111,20 +109,79 @@ function DraggableButtonInner({
 }
 
 export function WasdPad({ layoutMode, offsets, zOrder, onMove, onBringToFront, onKeyDown, onKeyUp }: WasdPadProps) {
-  const off = offsets ?? { w: { x: 0, y: 0 }, a: { x: 0, y: 0 }, s: { x: 0, y: 0 }, d: { x: 0, y: 0 } };
+  const theme = useTheme();
+  const off = useMemo(() => offsets ?? { w: { x: 0, y: 0 }, a: { x: 0, y: 0 }, s: { x: 0, y: 0 }, d: { x: 0, y: 0 } }, [offsets]);
   const order = zOrder ?? ['w', 'a', 's', 'd'];
+
+  const [pressed, setPressed] = useState<Record<'w' | 'a' | 's' | 'd', boolean>>({
+    w: false, a: false, s: false, d: false,
+  });
+  const [bgOrder, setBgOrder] = useState<('w' | 'a' | 's' | 'd')[]>(['w', 'a', 's', 'd']);
 
   const containerWidth = (BUTTON_SIZE + GAP) * 3 - GAP;
   const containerHeight = ROW_HEIGHT * 2 - GAP;
 
+  const anims = useRef<Record<'w' | 'a' | 's' | 'd', Animated.ValueXY>>({
+    w: new Animated.ValueXY({ x: off.w.x, y: off.w.y }),
+    a: new Animated.ValueXY({ x: off.a.x, y: off.a.y }),
+    s: new Animated.ValueXY({ x: off.s.x, y: off.s.y }),
+    d: new Animated.ValueXY({ x: off.d.x, y: off.d.y }),
+  }).current;
+
+  useEffect(() => {
+    anims.w.setValue({ x: off.w.x, y: off.w.y });
+    anims.a.setValue({ x: off.a.x, y: off.a.y });
+    anims.s.setValue({ x: off.s.x, y: off.s.y });
+    anims.d.setValue({ x: off.d.x, y: off.d.y });
+  }, [off, anims]);
+
+  const handlePressIn = useCallback((key: 'w' | 'a' | 's' | 'd') => {
+    setPressed((p) => ({ ...p, [key]: true }));
+    setBgOrder((prev) => {
+      const rest = prev.filter((k) => k !== key);
+      return [...rest, key];
+    });
+    onKeyDown?.(key);
+  }, [onKeyDown]);
+
+  const handlePressOut = useCallback((key: 'w' | 'a' | 's' | 'd') => {
+    setPressed((p) => ({ ...p, [key]: false }));
+    onKeyUp?.(key);
+  }, [onKeyUp]);
+
+  const renderBackground = (key: 'w' | 'a' | 's' | 'd') => {
+    const gridPos = GRID_POSITIONS[key];
+    return (
+      <Animated.View
+        key={`bg-${key}`}
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: gridPos.top,
+          left: gridPos.left,
+          width: BUTTON_SIZE,
+          height: BUTTON_SIZE,
+          borderRadius: 12,
+          backgroundColor: pressed[key]
+            ? theme.colors.primaryContainer
+            : theme.colors.surfaceVariant,
+          zIndex: bgOrder.indexOf(key),
+          transform: [{ translateX: anims[key].x }, { translateY: anims[key].y }],
+        }}
+      />
+    );
+  };
+
   const renderButton = (key: 'w' | 'a' | 's' | 'd', label: string) => {
     const gridPos = GRID_POSITIONS[key];
-    const zIndex = order.indexOf(key);
+    const zIndex = 10 + order.indexOf(key);
     const button = (
       <ControllerButton
         label={label}
-        onPressIn={() => onKeyDown?.(key)}
-        onPressOut={() => onKeyUp?.(key)}
+        transparent={true}
+        disabled={layoutMode}
+        onPressIn={() => handlePressIn(key)}
+        onPressOut={() => handlePressOut(key)}
       />
     );
 
@@ -136,12 +193,16 @@ export function WasdPad({ layoutMode, offsets, zOrder, onMove, onBringToFront, o
           gridLeft={gridPos.left}
           offsetX={off[key].x}
           offsetY={off[key].y}
+          anim={anims[key]}
           onMove={(x, y) => onMove?.(key, x, y)}
           onGrant={() => onBringToFront?.(key)}
           onRelease={() => {}}
           zIndex={zIndex}
         >
           {button}
+          <View style={styles.dragIndicator} pointerEvents="none">
+            <MaterialCommunityIcons name="cursor-move" size={16} color={theme.colors.primary} />
+          </View>
         </DraggableButtonInner>
       );
     }
@@ -164,6 +225,10 @@ export function WasdPad({ layoutMode, offsets, zOrder, onMove, onBringToFront, o
 
   return (
     <View style={[styles.container, { width: containerWidth, height: containerHeight }]}>
+      {renderBackground('w')}
+      {renderBackground('a')}
+      {renderBackground('s')}
+      {renderBackground('d')}
       {renderButton('w', 'W')}
       {renderButton('a', 'A')}
       {renderButton('s', 'S')}
@@ -174,6 +239,15 @@ export function WasdPad({ layoutMode, offsets, zOrder, onMove, onBringToFront, o
 
 const styles = StyleSheet.create({
   container: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dragIndicator: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 20,
+    height: 20,
     justifyContent: 'center',
     alignItems: 'center',
   },

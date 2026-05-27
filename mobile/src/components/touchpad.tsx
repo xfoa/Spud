@@ -3,38 +3,51 @@ import { View, StyleSheet, GestureResponderEvent } from 'react-native';
 import { Surface, useTheme } from 'react-native-paper';
 
 interface TouchpadProps {
+  disabled?: boolean;
   onTouchStart?: (x: number, y: number) => void;
   onTouchMove?: (x: number, y: number) => void;
   onTouchEnd?: () => void;
 }
 
-export function Touchpad({ onTouchStart, onTouchMove, onTouchEnd }: TouchpadProps) {
+export function Touchpad({ disabled, onTouchStart, onTouchMove, onTouchEnd }: TouchpadProps) {
   const theme = useTheme();
   const [touchPosition, setTouchPosition] = useState<{ x: number; y: number } | null>(null);
 
   const handleTouchStart = useCallback((event: GestureResponderEvent) => {
+    if (disabled) return;
     const { locationX, locationY } = event.nativeEvent;
     setTouchPosition({ x: locationX, y: locationY });
     onTouchStart?.(locationX, locationY);
-  }, [onTouchStart]);
+  }, [disabled, onTouchStart]);
 
   const handleTouchMove = useCallback((event: GestureResponderEvent) => {
+    if (disabled) return;
     const { locationX, locationY } = event.nativeEvent;
     setTouchPosition({ x: locationX, y: locationY });
     onTouchMove?.(locationX, locationY);
-  }, [onTouchMove]);
+  }, [disabled, onTouchMove]);
 
   const handleTouchEnd = useCallback(() => {
+    if (disabled) return;
     setTouchPosition(null);
     onTouchEnd?.();
-  }, [onTouchEnd]);
+  }, [disabled, onTouchEnd]);
 
   return (
-    <Surface style={[styles.container, { backgroundColor: theme.colors.surfaceVariant }]} elevation={2}>
+    <Surface
+      style={[
+        styles.container,
+        {
+          backgroundColor: theme.colors.surfaceVariant,
+          opacity: disabled ? 0.5 : 1,
+        },
+      ]}
+      elevation={2}
+    >
       <View
         style={styles.touchArea}
-        onStartShouldSetResponder={() => true}
-        onMoveShouldSetResponder={() => true}
+        onStartShouldSetResponder={() => !disabled}
+        onMoveShouldSetResponder={() => !disabled}
         onResponderGrant={handleTouchStart}
         onResponderMove={handleTouchMove}
         onResponderRelease={handleTouchEnd}
@@ -56,7 +69,7 @@ export function Touchpad({ onTouchStart, onTouchMove, onTouchEnd }: TouchpadProp
           ))}
         </View>
 
-        {touchPosition && (
+        {touchPosition && !disabled && (
           <View
             style={[
               styles.touchIndicator,

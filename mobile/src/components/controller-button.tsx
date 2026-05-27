@@ -4,34 +4,42 @@ import { Text, useTheme } from 'react-native-paper';
 
 interface ControllerButtonProps {
   label: string;
+  transparent?: boolean;
+  disabled?: boolean;
   onPressIn?: () => void;
   onPressOut?: () => void;
 }
 
-export function ControllerButton({ label, onPressIn, onPressOut }: ControllerButtonProps) {
+export function ControllerButton({ label, transparent, disabled, onPressIn, onPressOut }: ControllerButtonProps) {
   const theme = useTheme();
   const [pressed, setPressed] = useState(false);
 
   const handleTouchStart = useCallback((event: GestureResponderEvent) => {
     event.stopPropagation();
+    if (disabled) return;
     setPressed(true);
     onPressIn?.();
-  }, [onPressIn]);
+  }, [disabled, onPressIn]);
 
   const handleTouchEnd = useCallback((event: GestureResponderEvent) => {
     event.stopPropagation();
+    if (disabled) return;
     setPressed(false);
     onPressOut?.();
-  }, [onPressOut]);
+  }, [disabled, onPressOut]);
+
+  const isPressed = pressed && !disabled;
 
   return (
     <View
       style={[
         styles.button,
         {
-          backgroundColor: pressed
-            ? theme.colors.primaryContainer
-            : theme.colors.surfaceVariant,
+          backgroundColor: transparent
+            ? 'transparent'
+            : isPressed
+              ? theme.colors.primaryContainer
+              : theme.colors.surfaceVariant,
           borderColor: theme.colors.outlineVariant,
         },
       ]}
@@ -43,7 +51,7 @@ export function ControllerButton({ label, onPressIn, onPressOut }: ControllerBut
         variant="titleLarge"
         style={[
           styles.label,
-          { color: pressed ? theme.colors.onPrimaryContainer : theme.colors.onSurfaceVariant },
+          { color: isPressed ? theme.colors.onPrimaryContainer : theme.colors.onSurfaceVariant },
         ]}
       >
         {label}
