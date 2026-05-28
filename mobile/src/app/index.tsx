@@ -1,15 +1,15 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Surface, useTheme, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { MenuDrawer } from '@/components/menu-drawer';
-import { WasdPad } from '@/components/wasd-pad';
+import { KeyPanel, findEmptyGridCell, recalculateStoredPositions } from '@/components/key-panel';
 import { TouchpadContainer } from '@/components/touchpad-container';
 import { KeyboardModal } from '@/components/keyboard-modal';
 import { useImmersiveMode } from '@/hooks/use-immersive-mode';
-import { useLayoutConfig, defaultConfig, createDefaultConfig, ButtonOffset } from '@/hooks/use-layout-config';
+import { useLayoutConfig, defaultConfig, createDefaultConfig, LayoutConfig, KeyConfig } from '@/hooks/use-layout-config';
 
 export default function GameControllerScreen() {
   const theme = useTheme();
@@ -19,7 +19,8 @@ export default function GameControllerScreen() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [layoutMode, setLayoutMode] = useState(false);
   const [keyboardModalVisible, setKeyboardModalVisible] = useState(false);
-  const [draft, setDraft] = useState(config);
+  const [draft, setDraft] = useState<LayoutConfig>(config);
+  const [panelSize, setPanelSize] = useState({ width: 0, height: 0 });
   const panelRef = useRef<View>(null);
 
   useFocusEffect(
@@ -64,38 +65,99 @@ export default function GameControllerScreen() {
     setKeyboardModalVisible(false);
   }, []);
 
-  const handleKeyDown = useCallback((key: string) => {
-    console.log('Key down:', key);
+  const handleKeyDown = useCallback((code: string) => {
+    console.log('Key down:', code);
   }, []);
 
-  const handleKeyUp = useCallback((key: string) => {
-    console.log('Key up:', key);
+  const handleKeyUp = useCallback((code: string) => {
+    console.log('Key up:', code);
   }, []);
 
-  const handleButtonMove = useCallback(
-    (key: 'w' | 'a' | 's' | 'd', x: number, y: number) => {
-      setDraft((prev) => ({
+  const handleButtonMove = useCallback((code: string, x: number, y: number) => {
+    setDraft((prev) => ({
+      ...prev,
+      keys: prev.keys.map((k) => (k.code === code ? { ...k, offset: { x, y } } : k)),
+    }));
+  }, []);
+
+  const handleBringToFront = useCallback((code: string) => {
+    setDraft((prev) => {
+      const order = [...(prev.keyZOrder ?? prev.keys.map((k) => k.code))];
+      const idx = order.indexOf(code);
+      if (idx !== -1) {
+        order.splice(idx, 1);
+      }
+      order.push(code);
+      return { ...prev, keyZOrder: order };
+    });
+  }, []);
+
+  const selectedKeys = useMemo(() => {
+    const active = layoutMode ? draft : config;
+    return new Set(active.keys.map((k) => k.code));
+  }, [layoutMode, draft, config]);
+
+  const handleToggleKey = useCallback((code: string, label: string) => {
+    setDraft((prev) => {
+      const hasKey = prev.keys.some((k) => k.code === code);
+      if (hasKey) {
+        const afterRemove = prev.keys.filter((k) => k.code !== code);
+        return {
+          ...prev,
+          keys: recalculateStoredPositions(afterRemove, panelSize.width),
+          keyZOrder: prev.keyZOrder.filter((c) => c !== code),
+        };
+      } else {
+        const newCell = findEmptyGridCell(panelSize.width, prev.keys);
+        const newKey: KeyConfig = {
+          code,
+          label,
+          offset: { x: 0, y: 0 },
+          storedPosition: newCell,
+        };
+        const afterAdd = [...prev.keys, newKey];
+        return {
+          ...prev,
+          keys: recalculateStoredPositions(afterAdd, panelSize.width),
+          keyZOrder: [...prev.keyZOrder, code],
+        };
+      }
+    });
+  }, [panelSize.width]);
+
+  const handleResetOffsets = useCallback(() => {
+    setDraft((prev) => {
+      const defaultCodes = new Set(defaultConfig.keys.map((d) => d.code));
+
+      const defaultKeys = prev.keys
+        .filter((k) => defaultCodes.has(k.code))
+        .map((k) => ({
+          ...k,
+          offset: { x: 0, y: 0 },
+          storedPosition: defaultConfig.keys.find((d) => d.code === k.code)!.storedPosition,
+        }));
+
+      const otherKeys = prev.keys
+        .filter((k) => !defaultCodes.has(k.code))
+        .map((k) => ({ ...k, offset: { x: 0, y: 0 } }));
+
+      const resolved = [...defaultKeys];
+      for (const k of otherKeys) {
+        const empty = findEmptyGridCell(panelSize.width, resolved);
+        resolved.push({ ...k, storedPosition: empty });
+      }
+
+      return {
         ...prev,
-        [`${key}Offset`]: { x, y } as ButtonOffset,
-      }));
-    },
-    []
-  );
-
-  const handleBringToFront = useCallback(
-    (key: 'w' | 'a' | 's' | 'd') => {
-      setDraft((prev) => {
-        const order = [...(prev.zOrder ?? ['w', 'a', 's', 'd'])];
-        const idx = order.indexOf(key);
-        if (idx !== -1) {
-          order.splice(idx, 1);
-        }
-        order.push(key);
-        return { ...prev, zOrder: order };
-      });
-    },
-    []
-  );
+        keys: resolved,
+        keyZOrder: defaultConfig.keyZOrder
+          .filter((c) => prev.keys.some((k) => k.code === c))
+          .concat(
+            prev.keys.map((k) => k.code).filter((c) => !defaultConfig.keyZOrder.includes(c))
+          ),
+      };
+    });
+  }, [panelSize.width]);
 
   if (!loaded) {
     return (
@@ -104,17 +166,15 @@ export default function GameControllerScreen() {
   }
 
   const activeConfig = layoutMode ? draft : config;
-  const buttonOffsets = {
-    w: activeConfig.wOffset,
-    a: activeConfig.aOffset,
-    s: activeConfig.sOffset,
-    d: activeConfig.dOffset,
-  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Surface style={[styles.leftPanel, { backgroundColor: theme.colors.surface }]} elevation={1}>
-        <View ref={panelRef} style={styles.leftPanelContent}>
+        <View
+          ref={panelRef}
+          style={styles.leftPanelContent}
+          onLayout={(e) => setPanelSize(e.nativeEvent.layout)}
+        >
           {layoutMode && (
             <View style={styles.buttonsResetButton}>
               <IconButton
@@ -122,25 +182,16 @@ export default function GameControllerScreen() {
                   <MaterialCommunityIcons name="restore" size={size} color={color} />
                 )}
                 size={28}
-                onPress={() =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    wOffset: defaultConfig.wOffset,
-                    aOffset: defaultConfig.aOffset,
-                    sOffset: defaultConfig.sOffset,
-                    dOffset: defaultConfig.dOffset,
-                    zOrder: defaultConfig.zOrder,
-                  }))
-                }
+                onPress={handleResetOffsets}
                 iconColor={theme.colors.onSurface}
               />
             </View>
           )}
           <View style={styles.wasdWrapper}>
-            <WasdPad
+            <KeyPanel
               layoutMode={layoutMode}
-              offsets={buttonOffsets}
-              zOrder={activeConfig.zOrder}
+              keys={activeConfig.keys}
+              zOrder={activeConfig.keyZOrder}
               panelRef={panelRef}
               onMove={handleButtonMove}
               onBringToFront={handleBringToFront}
@@ -244,6 +295,8 @@ export default function GameControllerScreen() {
       <KeyboardModal
         visible={keyboardModalVisible}
         onDismiss={handleDismissKeyboard}
+        selectedKeys={selectedKeys}
+        onToggleKey={handleToggleKey}
       />
     </View>
   );
@@ -271,7 +324,7 @@ const styles = StyleSheet.create({
   },
   menuButtonContainer: {
     alignSelf: 'flex-end',
-    zIndex: 20,
+    zIndex: 1000,
   },
   layoutControls: {
     flexDirection: 'row',
@@ -290,6 +343,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0,
     left: 0,
-    zIndex: 20,
+    zIndex: 1000,
   },
 });
