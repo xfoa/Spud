@@ -5,7 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { MenuDrawer } from '@/components/menu-drawer';
-import { KeyPanel, findEmptyGridCell, recalculateStoredPositions, snapKeysToGrid } from '@/components/key-panel';
+import { KeyPanel, findEmptyGridCell, recalculateStoredPositions, snapKeysToGrid, KeyPanelRef } from '@/components/key-panel';
 import { TouchpadContainer } from '@/components/touchpad-container';
 import { KeyboardModal } from '@/components/keyboard-modal';
 import { useImmersiveMode } from '@/hooks/use-immersive-mode';
@@ -22,6 +22,7 @@ export default function GameControllerScreen() {
   const [draft, setDraft] = useState<LayoutConfig>(config);
   const [panelSize, setPanelSize] = useState({ width: 0, height: 0 });
   const panelRef = useRef<View>(null);
+  const keyPanelRef = useRef<KeyPanelRef>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -126,11 +127,11 @@ export default function GameControllerScreen() {
   }, [panelSize.width]);
 
   const handleResetOffsets = useCallback(() => {
-    setDraft((prev) => ({
-      ...prev,
-      keys: snapKeysToGrid(prev.keys, panelSize.width),
-    }));
-  }, [panelSize.width]);
+    const currentKeys = draft.keys;
+    const nextKeys = snapKeysToGrid(currentKeys, panelSize.width);
+    keyPanelRef.current?.prepareAlign(currentKeys, nextKeys);
+    setDraft((prev) => ({ ...prev, keys: nextKeys }));
+  }, [draft.keys, panelSize.width]);
 
   const handleResetKeys = useCallback(() => {
     setDraft((prev) => ({
@@ -170,6 +171,7 @@ export default function GameControllerScreen() {
           )}
           <View style={styles.wasdWrapper}>
             <KeyPanel
+              ref={keyPanelRef}
               layoutMode={layoutMode}
               keys={activeConfig.keys}
               zOrder={activeConfig.keyZOrder}

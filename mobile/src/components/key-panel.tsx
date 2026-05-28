@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import { useRef, useEffect, useMemo, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { View, StyleSheet, PanResponder, Animated } from 'react-native';
 import { useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -234,7 +234,13 @@ export function snapKeysToGrid(keys: KeyConfig[], panelWidth: number): KeyConfig
   return result;
 }
 
-export function KeyPanel({ layoutMode, keys, zOrder, panelRef, onMove, onBringToFront, onKeyDown, onKeyUp }: KeyPanelProps) {
+export interface KeyPanelRef {
+  prepareAlign: (currentKeys: KeyConfig[], nextKeys: KeyConfig[]) => void;
+}
+
+export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel({
+  layoutMode, keys, zOrder, panelRef, onMove, onBringToFront, onKeyDown, onKeyUp
+}, ref) {
   const theme = useTheme();
   const order = useMemo(() => {
     const keyCodes = new Set(keys.map(k => k.code));
@@ -269,6 +275,50 @@ export function KeyPanel({ layoutMode, keys, zOrder, panelRef, onMove, onBringTo
 
   const animsRef = useRef<Record<string, Animated.ValueXY>>({});
   const draggingCodeRef = useRef<string | null>(null);
+  const isAnimatingRef = useRef(false);
+  const pendingAlignRef = useRef<{ currentKeys: KeyConfig[]; nextKeys: KeyConfig[] } | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    prepareAlign: (currentKeys, nextKeys) => {
+      pendingAlignRef.current = { currentKeys, nextKeys };
+    },
+  }));
+
+  const startAlignAnimation = useCallback((currentKeys: KeyConfig[], nextKeys: KeyConfig[]) => {
+    const cellSize = BUTTON_SIZE + GAP;
+    const animations: Animated.CompositeAnimation[] = [];
+
+    for (const nextKey of nextKeys) {
+      if (draggingCodeRef.current === nextKey.code) continue;
+      const currentKey = currentKeys.find((k) => k.code === nextKey.code);
+      const anim = animsRef.current[nextKey.code];
+      if (!currentKey || !anim) continue;
+
+      const startX =
+        (currentKey.storedPosition.col - nextKey.storedPosition.col) * cellSize +
+        currentKey.offset.x;
+      const startY =
+        (currentKey.storedPosition.row - nextKey.storedPosition.row) * cellSize +
+        currentKey.offset.y;
+
+      anim.setValue({ x: startX, y: startY });
+
+      animations.push(
+        Animated.spring(anim, {
+          toValue: { x: nextKey.offset.x, y: nextKey.offset.y },
+          useNativeDriver: true,
+          friction: 8,
+        })
+      );
+    }
+
+    if (animations.length === 0) return;
+
+    isAnimatingRef.current = true;
+    Animated.parallel(animations).start(() => {
+      isAnimatingRef.current = false;
+    });
+  }, []);
 
   keys.forEach(key => {
     if (!animsRef.current[key.code]) {
@@ -277,6 +327,13 @@ export function KeyPanel({ layoutMode, keys, zOrder, panelRef, onMove, onBringTo
   });
 
   useEffect(() => {
+    if (pendingAlignRef.current) {
+      const { currentKeys, nextKeys } = pendingAlignRef.current;
+      pendingAlignRef.current = null;
+      startAlignAnimation(currentKeys, nextKeys);
+      return;
+    }
+    if (isAnimatingRef.current) return;
     keys.forEach(key => {
       if (draggingCodeRef.current === key.code) return;
       const anim = animsRef.current[key.code];
@@ -448,7 +505,7 @@ export function KeyPanel({ layoutMode, keys, zOrder, panelRef, onMove, onBringTo
       {keys.map((key) => renderButton(key))}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
