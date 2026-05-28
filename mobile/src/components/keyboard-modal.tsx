@@ -14,6 +14,7 @@ interface KeyboardModalProps {
   onDismiss: () => void;
   selectedKeys: Set<string>;
   onToggleKey: (code: string, label: string) => void;
+  onResetKeys?: () => void;
 }
 
 interface KeyDef {
@@ -343,7 +344,7 @@ const KeyButton = React.memo(function KeyButton({
   );
 });
 
-export function KeyboardModal({ visible, onDismiss, selectedKeys, onToggleKey }: KeyboardModalProps) {
+export function KeyboardModal({ visible, onDismiss, selectedKeys, onToggleKey, onResetKeys }: KeyboardModalProps) {
   const theme = useTheme();
   const { width: winW } = useWindowDimensions();
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
@@ -393,7 +394,15 @@ export function KeyboardModal({ visible, onDismiss, selectedKeys, onToggleKey }:
             { backgroundColor: theme.colors.surface, width: cardWidth },
           ]}
         >
-          <View style={styles.closeButton}>
+          <View style={styles.modalButtons}>
+            <IconButton
+              icon="restore"
+              size={24}
+              onPress={onResetKeys}
+              iconColor={theme.colors.onSurface}
+              containerColor={theme.colors.surface}
+              style={{ margin: 0 }}
+            />
             <IconButton
               icon="close"
               size={24}
@@ -495,11 +504,13 @@ const styles = StyleSheet.create({
     zIndex: 1,
     flexDirection: 'column',
   },
-  closeButton: {
+  modalButtons: {
     position: 'absolute',
     top: -12,
     right: -12,
     zIndex: 10,
+    flexDirection: 'row',
+    gap: 4,
     borderRadius: 20,
     backgroundColor: 'rgba(0,0,0,0.4)',
   },

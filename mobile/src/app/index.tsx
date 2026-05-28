@@ -159,6 +159,14 @@ export default function GameControllerScreen() {
     });
   }, [panelSize.width]);
 
+  const handleResetKeys = useCallback(() => {
+    setDraft((prev) => ({
+      ...prev,
+      keys: defaultConfig.keys.map((k) => ({ ...k, offset: { x: 0, y: 0 } })),
+      keyZOrder: [...defaultConfig.keyZOrder],
+    }));
+  }, []);
+
   if (!loaded) {
     return (
       <View style={[styles.container, { backgroundColor: theme.colors.background }]} />
@@ -179,7 +187,7 @@ export default function GameControllerScreen() {
             <View style={styles.buttonsResetButton}>
               <IconButton
                 icon={({ size, color }) => (
-                  <MaterialCommunityIcons name="restore" size={size} color={color} />
+                  <MaterialCommunityIcons name="grid" size={size} color={color} />
                 )}
                 size={28}
                 onPress={handleResetOffsets}
@@ -297,6 +305,7 @@ export default function GameControllerScreen() {
         onDismiss={handleDismissKeyboard}
         selectedKeys={selectedKeys}
         onToggleKey={handleToggleKey}
+        onResetKeys={handleResetKeys}
       />
     </View>
   );
