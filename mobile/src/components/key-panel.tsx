@@ -199,6 +199,41 @@ function getBasePosition(key: KeyConfig) {
   };
 }
 
+export function snapKeysToGrid(keys: KeyConfig[], panelWidth: number): KeyConfig[] {
+  const cellSize = BUTTON_SIZE + GAP;
+  const cols = Math.max(1, Math.floor((panelWidth - 16) / cellSize));
+
+  const snapped = keys.map((k) => {
+    const visualX = k.storedPosition.col * cellSize + k.offset.x;
+    const visualY = k.storedPosition.row * cellSize + k.offset.y;
+    const nearestCol = Math.round(visualX / cellSize);
+    const nearestRow = Math.round(visualY / cellSize);
+    return {
+      ...k,
+      storedPosition: { col: nearestCol, row: nearestRow },
+      offset: { x: 0, y: 0 },
+    };
+  });
+
+  const occupied = new Set<string>();
+  const result: KeyConfig[] = [];
+
+  for (const k of snapped) {
+    let { col, row } = k.storedPosition;
+    while (occupied.has(`${col},${row}`)) {
+      col++;
+      if (col >= cols) {
+        col = 0;
+        row++;
+      }
+    }
+    occupied.add(`${col},${row}`);
+    result.push({ ...k, storedPosition: { col, row } });
+  }
+
+  return result;
+}
+
 export function KeyPanel({ layoutMode, keys, zOrder, panelRef, onMove, onBringToFront, onKeyDown, onKeyUp }: KeyPanelProps) {
   const theme = useTheme();
   const order = useMemo(() => {

@@ -5,11 +5,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { MenuDrawer } from '@/components/menu-drawer';
-import { KeyPanel, findEmptyGridCell, recalculateStoredPositions } from '@/components/key-panel';
+import { KeyPanel, findEmptyGridCell, recalculateStoredPositions, snapKeysToGrid } from '@/components/key-panel';
 import { TouchpadContainer } from '@/components/touchpad-container';
 import { KeyboardModal } from '@/components/keyboard-modal';
 import { useImmersiveMode } from '@/hooks/use-immersive-mode';
-import { useLayoutConfig, defaultConfig, createDefaultConfig, LayoutConfig, KeyConfig } from '@/hooks/use-layout-config';
+import { useLayoutConfig, defaultConfig, LayoutConfig, KeyConfig } from '@/hooks/use-layout-config';
 
 export default function GameControllerScreen() {
   const theme = useTheme();
@@ -126,37 +126,10 @@ export default function GameControllerScreen() {
   }, [panelSize.width]);
 
   const handleResetOffsets = useCallback(() => {
-    setDraft((prev) => {
-      const defaultCodes = new Set(defaultConfig.keys.map((d) => d.code));
-
-      const defaultKeys = prev.keys
-        .filter((k) => defaultCodes.has(k.code))
-        .map((k) => ({
-          ...k,
-          offset: { x: 0, y: 0 },
-          storedPosition: defaultConfig.keys.find((d) => d.code === k.code)!.storedPosition,
-        }));
-
-      const otherKeys = prev.keys
-        .filter((k) => !defaultCodes.has(k.code))
-        .map((k) => ({ ...k, offset: { x: 0, y: 0 } }));
-
-      const resolved = [...defaultKeys];
-      for (const k of otherKeys) {
-        const empty = findEmptyGridCell(panelSize.width, resolved);
-        resolved.push({ ...k, storedPosition: empty });
-      }
-
-      return {
-        ...prev,
-        keys: resolved,
-        keyZOrder: defaultConfig.keyZOrder
-          .filter((c) => prev.keys.some((k) => k.code === c))
-          .concat(
-            prev.keys.map((k) => k.code).filter((c) => !defaultConfig.keyZOrder.includes(c))
-          ),
-      };
-    });
+    setDraft((prev) => ({
+      ...prev,
+      keys: snapKeysToGrid(prev.keys, panelSize.width),
+    }));
   }, [panelSize.width]);
 
   const handleResetKeys = useCallback(() => {
