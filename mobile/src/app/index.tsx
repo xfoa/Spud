@@ -108,6 +108,18 @@ export default function GameControllerScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    {layoutMode && (
+        <View style={styles.alignButton}>
+          <IconButton
+            icon={({ size, color }) => (
+              <MaterialCommunityIcons name="grid" size={size} color={color} />
+            )}
+            size={28}
+            onPress={handleResetOffsets}
+            iconColor={theme.colors.onSurface}
+          />
+        </View>
+      )}
       <Surface style={[styles.leftPanel, { backgroundColor: theme.colors.surface }]} elevation={1}>
         <View style={styles.leftPanelContent}>
           <View style={styles.wasdWrapper}>
@@ -119,7 +131,6 @@ export default function GameControllerScreen() {
               onKeyDown={handleKeyDown}
               onKeyUp={handleKeyUp}
               onKeysChange={handleKeysChange}
-              onAlign={handleResetOffsets}
               onCancel={handleCancelLayout}
               onAccept={handleConfirmLayout}
               onOpenMenu={handleOpenMenu}
@@ -218,5 +229,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 6,
     right: 8,
+  },
+  alignButton: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    zIndex: 1000,
   },
 });

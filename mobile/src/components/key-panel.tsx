@@ -34,7 +34,6 @@ interface KeyPanelProps {
   onKeyDown?: (code: string) => void;
   onKeyUp?: (code: string) => void;
   onKeysChange?: (keys: KeyConfig[]) => void;
-  onAlign?: () => void;
   onCancel?: () => void;
   onAccept?: () => void;
   onOpenMenu?: () => void;
@@ -156,7 +155,6 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
     onKeyDown,
     onKeyUp,
     onKeysChange,
-    onAlign,
     onCancel,
     onAccept,
     onOpenMenu,
@@ -501,18 +499,6 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
 
       {/* Top layer: action buttons */}
       <View style={styles.actionLayer} pointerEvents="box-none">
-        {layoutMode && onAlign && (
-          <View style={styles.alignButton} pointerEvents="auto">
-            <IconButton
-              icon={({ size, color }) => (
-                <MaterialCommunityIcons name="grid" size={size} color={color} />
-              )}
-              size={28}
-              onPress={onAlign}
-              iconColor={theme.colors.onSurface}
-            />
-          </View>
-        )}
         <View style={styles.menuButtons} pointerEvents="auto">
           {layoutMode ? (
             <View style={styles.layoutControls}>
@@ -594,11 +580,6 @@ const styles = StyleSheet.create({
     height: 20,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  alignButton: {
-    position: 'absolute',
-    top: 4,
-    left: 4,
   },
   menuButtons: {
     position: 'absolute',

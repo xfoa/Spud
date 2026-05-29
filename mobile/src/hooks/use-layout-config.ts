@@ -21,7 +21,7 @@ export interface LayoutConfig {
 export const defaultConfig: LayoutConfig = {
   touchpadTop: 36,
   touchpadBottom: 36,
-  touchpadLeft: 8,
+  touchpadLeft: 0,
   touchpadRight: 36,
   keys: [
     { code: 'KeyW', label: 'W', visualPosition: { x: 80, y: 0 } },
@@ -36,7 +36,7 @@ export function createDefaultConfig(): LayoutConfig {
   return {
     touchpadTop: 36,
     touchpadBottom: 36,
-    touchpadLeft: 8,
+    touchpadLeft: 0,
     touchpadRight: 36,
     keys: [
       { code: 'KeyW', label: 'W', visualPosition: { x: 80, y: 0 } },
