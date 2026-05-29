@@ -111,31 +111,48 @@ function computeAlignmentTargets(
   const targets: { code: string; targetX: number; targetY: number }[] = [];
 
   for (const key of sorted) {
-    const snapped = snapPosition(key.visualPosition.x, key.visualPosition.y);
-    let { x, y } = snapped;
-
-    if (occupied.has(`${x},${y}`)) {
-      const candidates: { x: number; y: number; dist: number }[] = [];
-      for (let row = 0; row < maxRows * SNAP_RESOLUTION; row++) {
-        for (let col = 0; col < maxCols * SNAP_RESOLUTION; col++) {
-          const cx = col * SNAP_STEP;
-          const cy = row * SNAP_STEP;
-          if (cx + BUTTON_SIZE > maxWidth || cy + BUTTON_SIZE > maxHeight) continue;
-          if (!occupied.has(`${cx},${cy}`)) {
-            const dist = Math.hypot(cx - snapped.x, cy - snapped.y);
-            candidates.push({ x: cx, y: cy, dist });
+    // Always prefer Tier 1 first: full grid cells
+    let bestTier1: { x: number; y: number; dist: number } | null = null;
+    for (let row = 0; row < maxRows; row++) {
+      for (let col = 0; col < maxCols; col++) {
+        const cx = col * CELL_SIZE;
+        const cy = row * CELL_SIZE;
+        if (cx + BUTTON_SIZE > maxWidth || cy + BUTTON_SIZE > maxHeight) continue;
+        if (!occupied.has(`${cx},${cy}`)) {
+          const dist = Math.hypot(cx - key.visualPosition.x, cy - key.visualPosition.y);
+          if (!bestTier1 || dist < bestTier1.dist) {
+            bestTier1 = { x: cx, y: cy, dist };
           }
         }
       }
-      candidates.sort((a, b) => a.dist - b.dist);
-      if (candidates.length > 0) {
-        x = candidates[0].x;
-        y = candidates[0].y;
+    }
+
+    if (bestTier1) {
+      occupied.add(`${bestTier1.x},${bestTier1.y}`);
+      targets.push({ code: key.code, targetX: bestTier1.x, targetY: bestTier1.y });
+      continue;
+    }
+
+    // Fall back to Tier 2: every 2nd odd snap index
+    let bestTier2: { x: number; y: number; dist: number } | null = null;
+    for (let row = 0; row < maxRows * SNAP_RESOLUTION; row += 4) {
+      for (let col = 0; col < maxCols * SNAP_RESOLUTION; col += 4) {
+        const cx = col * SNAP_STEP + SNAP_STEP;
+        const cy = row * SNAP_STEP + SNAP_STEP;
+        if (cx + BUTTON_SIZE > maxWidth || cy + BUTTON_SIZE > maxHeight) continue;
+        if (!occupied.has(`${cx},${cy}`)) {
+          const dist = Math.hypot(cx - key.visualPosition.x, cy - key.visualPosition.y);
+          if (!bestTier2 || dist < bestTier2.dist) {
+            bestTier2 = { x: cx, y: cy, dist };
+          }
+        }
       }
     }
 
-    occupied.add(`${x},${y}`);
-    targets.push({ code: key.code, targetX: x, targetY: y });
+    if (bestTier2) {
+      occupied.add(`${bestTier2.x},${bestTier2.y}`);
+      targets.push({ code: key.code, targetX: bestTier2.x, targetY: bestTier2.y });
+    }
   }
 
   return targets;
@@ -292,6 +309,15 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
           setAnimatingCodes(new Set(currentKeys.map((k) => k.code)));
           alignmentAnimRef.current = Animated.parallel(animations);
           alignmentAnimRef.current.start(() => {
+            // Sync JS animated values to targets so the next render
+            // does not flash back to stale start positions
+            for (const key of currentKeys) {
+              const target = targetMap.get(key.code);
+              if (target) {
+                const anim = getAnim(key.code);
+                anim.setValue({ x: target.x, y: target.y });
+              }
+            }
             setIsAnimating(false);
             setAnimatingCodes(new Set());
             setKeys((prev) =>
