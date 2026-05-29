@@ -8,7 +8,8 @@ import {
   useEffect,
 } from 'react';
 import { View, StyleSheet, PanResponder, Animated, Easing } from 'react-native';
-import { useTheme } from 'react-native-paper';
+import type { LayoutChangeEvent } from 'react-native';
+import { useTheme, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ControllerButton } from './controller-button';
 import { KeyConfig } from '@/hooks/use-layout-config';
@@ -20,8 +21,6 @@ const SNAP_RESOLUTION = 2;
 const SNAP_STEP = CELL_SIZE / SNAP_RESOLUTION;
 const PANEL_COLS = 6;
 const PANEL_ROWS = 4;
-const PANEL_WIDTH = PANEL_COLS * CELL_SIZE - GAP;
-const PANEL_HEIGHT = PANEL_ROWS * CELL_SIZE - GAP;
 const TIER1_CAPACITY = PANEL_COLS * PANEL_ROWS;
 const TIER2_COLS = Math.floor((PANEL_COLS * SNAP_RESOLUTION - 1) / 4) + 1;
 const TIER2_ROWS = Math.floor((PANEL_ROWS * SNAP_RESOLUTION - 1) / 4) + 1;
@@ -35,6 +34,11 @@ interface KeyPanelProps {
   onKeyDown?: (code: string) => void;
   onKeyUp?: (code: string) => void;
   onKeysChange?: (keys: KeyConfig[]) => void;
+  onAlign?: () => void;
+  onCancel?: () => void;
+  onAccept?: () => void;
+  onOpenMenu?: () => void;
+  onOpenKeyboard?: () => void;
 }
 
 export interface KeyPanelRef {
@@ -56,7 +60,9 @@ function snapPosition(x: number, y: number): { x: number; y: number } {
 }
 
 function findEmptyCell(
-  existingKeys: { visualPosition: { x: number; y: number } }[]
+  existingKeys: { visualPosition: { x: number; y: number } }[],
+  maxWidth: number,
+  maxHeight: number
 ): { x: number; y: number } | null {
   const occupied = new Set<string>();
   for (const k of existingKeys) {
@@ -68,6 +74,7 @@ function findEmptyCell(
     for (let col = 0; col < PANEL_COLS; col++) {
       const x = col * CELL_SIZE;
       const y = row * CELL_SIZE;
+      if (x + BUTTON_SIZE > maxWidth || y + BUTTON_SIZE > maxHeight) continue;
       if (!occupied.has(`${x},${y}`)) {
         return { x, y };
       }
@@ -78,7 +85,7 @@ function findEmptyCell(
     for (let col = 0; col < PANEL_COLS * SNAP_RESOLUTION; col += 4) {
       const x = col * SNAP_STEP + SNAP_STEP;
       const y = row * SNAP_STEP + SNAP_STEP;
-      if (x + BUTTON_SIZE > PANEL_WIDTH || y + BUTTON_SIZE > PANEL_HEIGHT) continue;
+      if (x + BUTTON_SIZE > maxWidth || y + BUTTON_SIZE > maxHeight) continue;
       if (!occupied.has(`${x},${y}`)) {
         return { x, y };
       }
@@ -89,7 +96,9 @@ function findEmptyCell(
 }
 
 function computeAlignmentTargets(
-  keys: KeyConfig[]
+  keys: KeyConfig[],
+  maxWidth: number,
+  maxHeight: number
 ): { code: string; targetX: number; targetY: number }[] {
   const sorted = [...keys].sort((a, b) => {
     if (a.visualPosition.y !== b.visualPosition.y) {
@@ -111,7 +120,7 @@ function computeAlignmentTargets(
         for (let col = 0; col < PANEL_COLS * SNAP_RESOLUTION; col++) {
           const cx = col * SNAP_STEP;
           const cy = row * SNAP_STEP;
-          if (cx + BUTTON_SIZE > PANEL_WIDTH || cy + BUTTON_SIZE > PANEL_HEIGHT) continue;
+          if (cx + BUTTON_SIZE > maxWidth || cy + BUTTON_SIZE > maxHeight) continue;
           if (!occupied.has(`${cx},${cy}`)) {
             const dist = Math.hypot(cx - snapped.x, cy - snapped.y);
             candidates.push({ x: cx, y: cy, dist });
@@ -132,15 +141,27 @@ function computeAlignmentTargets(
   return targets;
 }
 
-function clampToPanel(x: number, y: number): { x: number; y: number } {
+function clampToPanel(x: number, y: number, maxWidth: number, maxHeight: number): { x: number; y: number } {
   return {
-    x: Math.max(0, Math.min(PANEL_WIDTH - BUTTON_SIZE, x)),
-    y: Math.max(0, Math.min(PANEL_HEIGHT - BUTTON_SIZE, y)),
+    x: Math.max(0, Math.min(maxWidth - BUTTON_SIZE, x)),
+    y: Math.max(0, Math.min(maxHeight - BUTTON_SIZE, y)),
   };
 }
 
 export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel(
-  { layoutMode, committedKeys, committedZOrder, onKeyDown, onKeyUp, onKeysChange },
+  {
+    layoutMode,
+    committedKeys,
+    committedZOrder,
+    onKeyDown,
+    onKeyUp,
+    onKeysChange,
+    onAlign,
+    onCancel,
+    onAccept,
+    onOpenMenu,
+    onOpenKeyboard,
+  },
   ref
 ) {
   const theme = useTheme();
@@ -149,6 +170,13 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
   const [zOrder, setZOrder] = useState<string[]>(committedZOrder);
   const [pressed, setPressed] = useState<Record<string, boolean>>({});
   const [, setIsAligning] = useState(false);
+
+  const panelSizeRef = useRef({ width: 0, height: 0 });
+
+  const handleLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    panelSizeRef.current = { width, height };
+  }, []);
 
   useEffect(() => {
     onKeysChange?.(keys);
@@ -189,7 +217,8 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
       setKeys((prev) => {
         if (prev.some((k) => k.code === code)) return prev;
         if (prev.length >= MAX_CAPACITY) return prev;
-        const cell = findEmptyCell(prev);
+        const { width, height } = panelSizeRef.current;
+        const cell = findEmptyCell(prev, width, height);
         if (!cell) return prev;
         const newKey: KeyConfig = {
           code,
@@ -216,7 +245,8 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
 
         alignmentAnimRef.current?.stop();
 
-        const targets = computeAlignmentTargets(currentKeys);
+        const { width, height } = panelSizeRef.current;
+        const targets = computeAlignmentTargets(currentKeys, width, height);
         const targetMap = new Map(targets.map((t) => [t.code, t]));
 
         const animations: Animated.CompositeAnimation[] = [];
@@ -338,7 +368,8 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
           if (!start) return;
           const rawX = start.x + gestureState.dx;
           const rawY = start.y + gestureState.dy;
-          const clamped = clampToPanel(rawX, rawY);
+          const { width, height } = panelSizeRef.current;
+          const clamped = clampToPanel(rawX, rawY, width, height);
           const anim = getAnim(code);
           anim.setValue({ x: clamped.x, y: clamped.y });
         },
@@ -347,7 +378,8 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
           if (start) {
             const rawX = start.x + gestureState.dx;
             const rawY = start.y + gestureState.dy;
-            const clamped = clampToPanel(rawX, rawY);
+            const { width, height } = panelSizeRef.current;
+            const clamped = clampToPanel(rawX, rawY, width, height);
             setKeys((prev) =>
               prev.map((k) =>
                 k.code === code
@@ -460,9 +492,75 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
   };
 
   return (
-    <View style={[styles.panel, { width: PANEL_WIDTH, height: PANEL_HEIGHT }]}>
-      {keys.map((key) => renderBackground(key))}
-      {keys.map((key) => renderButton(key))}
+    <View style={styles.panel} onLayout={handleLayout}>
+      {/* Middle layer: key buttons */}
+      <View style={styles.keysLayer} pointerEvents="box-none">
+        {keys.map((key) => renderBackground(key))}
+        {keys.map((key) => renderButton(key))}
+      </View>
+
+      {/* Top layer: action buttons */}
+      <View style={styles.actionLayer} pointerEvents="box-none">
+        {layoutMode && onAlign && (
+          <View style={styles.alignButton} pointerEvents="auto">
+            <IconButton
+              icon={({ size, color }) => (
+                <MaterialCommunityIcons name="grid" size={size} color={color} />
+              )}
+              size={28}
+              onPress={onAlign}
+              iconColor={theme.colors.onSurface}
+            />
+          </View>
+        )}
+        <View style={styles.menuButtons} pointerEvents="auto">
+          {layoutMode ? (
+            <View style={styles.layoutControls}>
+              {onOpenKeyboard && (
+                <IconButton
+                  icon={({ size, color }) => (
+                    <MaterialCommunityIcons name="keyboard" size={size} color={color} />
+                  )}
+                  size={28}
+                  onPress={onOpenKeyboard}
+                  iconColor={theme.colors.onSurface}
+                />
+              )}
+              {onCancel && (
+                <IconButton
+                  icon={({ size, color }) => (
+                    <MaterialCommunityIcons name="close" size={size} color={color} />
+                  )}
+                  size={28}
+                  onPress={onCancel}
+                  iconColor={theme.colors.error}
+                />
+              )}
+              {onAccept && (
+                <IconButton
+                  icon={({ size, color }) => (
+                    <MaterialCommunityIcons name="check" size={size} color={color} />
+                  )}
+                  size={28}
+                  onPress={onAccept}
+                  iconColor={theme.colors.primary}
+                />
+              )}
+            </View>
+          ) : (
+            onOpenMenu && (
+              <IconButton
+                icon={({ size, color }) => (
+                  <MaterialCommunityIcons name="menu" size={size} color={color} />
+                )}
+                size={28}
+                onPress={onOpenMenu}
+                iconColor={theme.colors.onSurface}
+              />
+            )
+          )}
+        </View>
+      </View>
     </View>
   );
 });
@@ -470,6 +568,15 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
 const styles = StyleSheet.create({
   panel: {
     position: 'relative',
+    width: '100%',
+    height: '100%',
+  },
+  keysLayer: {
+    ...StyleSheet.absoluteFill,
+  },
+  actionLayer: {
+    ...StyleSheet.absoluteFill,
+    zIndex: 1000,
   },
   buttonBase: {
     position: 'absolute',
@@ -487,5 +594,19 @@ const styles = StyleSheet.create({
     height: 20,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  alignButton: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+  },
+  menuButtons: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+  },
+  layoutControls: {
+    flexDirection: 'row',
+    gap: 4,
   },
 });

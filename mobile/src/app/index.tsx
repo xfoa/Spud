@@ -110,18 +110,6 @@ export default function GameControllerScreen() {
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Surface style={[styles.leftPanel, { backgroundColor: theme.colors.surface }]} elevation={1}>
         <View style={styles.leftPanelContent}>
-          {layoutMode && (
-            <View style={styles.buttonsResetButton}>
-              <IconButton
-                icon={({ size, color }) => (
-                  <MaterialCommunityIcons name="grid" size={size} color={color} />
-                )}
-                size={28}
-                onPress={handleResetOffsets}
-                iconColor={theme.colors.onSurface}
-              />
-            </View>
-          )}
           <View style={styles.wasdWrapper}>
             <KeyPanel
               ref={keyPanelRef}
@@ -131,47 +119,12 @@ export default function GameControllerScreen() {
               onKeyDown={handleKeyDown}
               onKeyUp={handleKeyUp}
               onKeysChange={handleKeysChange}
+              onAlign={handleResetOffsets}
+              onCancel={handleCancelLayout}
+              onAccept={handleConfirmLayout}
+              onOpenMenu={handleOpenMenu}
+              onOpenKeyboard={handleOpenKeyboard}
             />
-          </View>
-
-          <View style={styles.menuButtonContainer}>
-            {layoutMode ? (
-              <View style={styles.layoutControls}>
-                <IconButton
-                  icon={({ size, color }) => (
-                    <MaterialCommunityIcons name="keyboard" size={size} color={color} />
-                  )}
-                  size={28}
-                  onPress={handleOpenKeyboard}
-                  iconColor={theme.colors.onSurface}
-                />
-                <IconButton
-                  icon={({ size, color }) => (
-                    <MaterialCommunityIcons name="close" size={size} color={color} />
-                  )}
-                  size={28}
-                  onPress={handleCancelLayout}
-                  iconColor={theme.colors.error}
-                />
-                <IconButton
-                  icon={({ size, color }) => (
-                    <MaterialCommunityIcons name="check" size={size} color={color} />
-                  )}
-                  size={28}
-                  onPress={handleConfirmLayout}
-                  iconColor={theme.colors.primary}
-                />
-              </View>
-            ) : (
-              <IconButton
-                icon={({ size, color }) => (
-                  <MaterialCommunityIcons name="menu" size={size} color={color} />
-                )}
-                size={28}
-                onPress={handleOpenMenu}
-                iconColor={theme.colors.onSurface}
-              />
-            )}
           </View>
         </View>
       </Surface>
@@ -244,26 +197,18 @@ const styles = StyleSheet.create({
   },
   leftPanel: {
     flex: 1,
-    margin: 8,
+    margin: 16,
     borderRadius: 16,
     overflow: 'hidden',
   },
   leftPanelContent: {
     flex: 1,
-    padding: 16,
+    padding: 4,
   },
   wasdWrapper: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  menuButtonContainer: {
-    alignSelf: 'flex-end',
-    zIndex: 1000,
-  },
-  layoutControls: {
-    flexDirection: 'row',
-    gap: 4,
   },
   rightPanel: {
     flex: 1,
@@ -273,11 +218,5 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 6,
     right: 8,
-  },
-  buttonsResetButton: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    zIndex: 1000,
   },
 });
