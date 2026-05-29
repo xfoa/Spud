@@ -5,7 +5,6 @@ import {
   useCallback,
   forwardRef,
   useImperativeHandle,
-  useEffect,
 } from 'react';
 import { View, StyleSheet, PanResponder, Animated, Easing } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
@@ -19,13 +18,6 @@ const GAP = 8;
 const CELL_SIZE = BUTTON_SIZE + GAP;
 const SNAP_RESOLUTION = 2;
 const SNAP_STEP = CELL_SIZE / SNAP_RESOLUTION;
-const PANEL_COLS = 6;
-const PANEL_ROWS = 4;
-const TIER1_CAPACITY = PANEL_COLS * PANEL_ROWS;
-const TIER2_COLS = Math.floor((PANEL_COLS * SNAP_RESOLUTION - 1) / 4) + 1;
-const TIER2_ROWS = Math.floor((PANEL_ROWS * SNAP_RESOLUTION - 1) / 4) + 1;
-const TIER2_CAPACITY = TIER2_COLS * TIER2_ROWS;
-const MAX_CAPACITY = TIER1_CAPACITY + TIER2_CAPACITY;
 
 interface KeyPanelProps {
   layoutMode?: boolean;
@@ -33,7 +25,6 @@ interface KeyPanelProps {
   committedZOrder: string[];
   onKeyDown?: (code: string) => void;
   onKeyUp?: (code: string) => void;
-  onKeysChange?: (keys: KeyConfig[]) => void;
   onCancel?: () => void;
   onAccept?: () => void;
   onOpenMenu?: () => void;
@@ -46,9 +37,11 @@ export interface KeyPanelRef {
   addKey(code: string, label: string): void;
   removeKey(code: string): void;
   canAddKey(): boolean;
+  isAnimating(): boolean;
   startAlignment(): void;
   resetToCommitted(): void;
   resetEverything(): void;
+  resetPositions(): void;
 }
 
 function snapPosition(x: number, y: number): { x: number; y: number } {
@@ -69,8 +62,12 @@ function findEmptyCell(
     occupied.add(`${s.x},${s.y}`);
   }
 
-  for (let row = 0; row < PANEL_ROWS; row++) {
-    for (let col = 0; col < PANEL_COLS; col++) {
+  const maxCols = Math.floor(maxWidth / CELL_SIZE);
+  const maxRows = Math.floor(maxHeight / CELL_SIZE);
+
+  // Tier 1: even snap indices (non-overlapping)
+  for (let row = 0; row < maxRows; row++) {
+    for (let col = 0; col < maxCols; col++) {
       const x = col * CELL_SIZE;
       const y = row * CELL_SIZE;
       if (x + BUTTON_SIZE > maxWidth || y + BUTTON_SIZE > maxHeight) continue;
@@ -80,8 +77,9 @@ function findEmptyCell(
     }
   }
 
-  for (let row = 0; row < PANEL_ROWS * SNAP_RESOLUTION; row += 4) {
-    for (let col = 0; col < PANEL_COLS * SNAP_RESOLUTION; col += 4) {
+  // Tier 2: every 2nd odd snap index (sparse overlapping)
+  for (let row = 0; row < maxRows * SNAP_RESOLUTION; row += 4) {
+    for (let col = 0; col < maxCols * SNAP_RESOLUTION; col += 4) {
       const x = col * SNAP_STEP + SNAP_STEP;
       const y = row * SNAP_STEP + SNAP_STEP;
       if (x + BUTTON_SIZE > maxWidth || y + BUTTON_SIZE > maxHeight) continue;
@@ -99,6 +97,9 @@ function computeAlignmentTargets(
   maxWidth: number,
   maxHeight: number
 ): { code: string; targetX: number; targetY: number }[] {
+  const maxCols = Math.floor(maxWidth / CELL_SIZE);
+  const maxRows = Math.floor(maxHeight / CELL_SIZE);
+
   const sorted = [...keys].sort((a, b) => {
     if (a.visualPosition.y !== b.visualPosition.y) {
       return a.visualPosition.y - b.visualPosition.y;
@@ -115,8 +116,8 @@ function computeAlignmentTargets(
 
     if (occupied.has(`${x},${y}`)) {
       const candidates: { x: number; y: number; dist: number }[] = [];
-      for (let row = 0; row < PANEL_ROWS * SNAP_RESOLUTION; row++) {
-        for (let col = 0; col < PANEL_COLS * SNAP_RESOLUTION; col++) {
+      for (let row = 0; row < maxRows * SNAP_RESOLUTION; row++) {
+        for (let col = 0; col < maxCols * SNAP_RESOLUTION; col++) {
           const cx = col * SNAP_STEP;
           const cy = row * SNAP_STEP;
           if (cx + BUTTON_SIZE > maxWidth || cy + BUTTON_SIZE > maxHeight) continue;
@@ -154,7 +155,6 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
     committedZOrder,
     onKeyDown,
     onKeyUp,
-    onKeysChange,
     onCancel,
     onAccept,
     onOpenMenu,
@@ -167,18 +167,16 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
   const [keys, setKeys] = useState<KeyConfig[]>(committedKeys);
   const [zOrder, setZOrder] = useState<string[]>(committedZOrder);
   const [pressed, setPressed] = useState<Record<string, boolean>>({});
-  const [, setIsAligning] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [animatingCodes, setAnimatingCodes] = useState<Set<string>>(new Set());
 
   const panelSizeRef = useRef({ width: 0, height: 0 });
+  const alignmentTargetRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
     panelSizeRef.current = { width, height };
   }, []);
-
-  useEffect(() => {
-    onKeysChange?.(keys);
-  }, [keys, onKeysChange]);
 
   const animsRef = useRef<Record<string, Animated.ValueXY>>({});
   const draggingCodeRef = useRef<string | null>(null);
@@ -208,13 +206,34 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
   );
 
   useImperativeHandle(ref, () => ({
-    getKeys: () => keys.map((k) => ({ ...k })),
+    getKeys: () => {
+      if (isAnimating) {
+        return keys.map((k) => {
+          const target = alignmentTargetRef.current.get(k.code);
+          return target
+            ? { ...k, visualPosition: { x: target.x, y: target.y } }
+            : { ...k };
+        });
+      }
+      return keys.map((k) => ({ ...k }));
+    },
     getZOrder: () => [...zOrder],
-    canAddKey: () => keys.length < MAX_CAPACITY,
+    canAddKey: () => {
+      const { width, height } = panelSizeRef.current;
+      if (width === 0 || height === 0) return false;
+      const maxCols = Math.floor(width / CELL_SIZE);
+      const maxRows = Math.floor(height / CELL_SIZE);
+      const tier1Capacity = maxCols * maxRows;
+      const tier2Cols = Math.floor((maxCols * SNAP_RESOLUTION - 1) / 4) + 1;
+      const tier2Rows = Math.floor((maxRows * SNAP_RESOLUTION - 1) / 4) + 1;
+      const tier2Capacity = tier2Cols * tier2Rows;
+      const totalCapacity = tier1Capacity + tier2Capacity;
+      return keys.length < totalCapacity;
+    },
+    isAnimating: () => isAnimating,
     addKey: (code: string, label: string) => {
       setKeys((prev) => {
         if (prev.some((k) => k.code === code)) return prev;
-        if (prev.length >= MAX_CAPACITY) return prev;
         const { width, height } = panelSizeRef.current;
         const cell = findEmptyCell(prev, width, height);
         if (!cell) return prev;
@@ -245,7 +264,8 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
 
         const { width, height } = panelSizeRef.current;
         const targets = computeAlignmentTargets(currentKeys, width, height);
-        const targetMap = new Map(targets.map((t) => [t.code, t]));
+        const targetMap = new Map(targets.map((t) => [t.code, { x: t.targetX, y: t.targetY }]));
+        alignmentTargetRef.current = targetMap;
 
         const animations: Animated.CompositeAnimation[] = [];
         for (const key of currentKeys) {
@@ -259,7 +279,7 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
 
           animations.push(
             Animated.timing(anim, {
-              toValue: { x: target.targetX, y: target.targetY },
+              toValue: { x: target.x, y: target.y },
               duration: 300,
               easing: Easing.out(Easing.cubic),
               useNativeDriver: true,
@@ -268,17 +288,19 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
         }
 
         if (animations.length > 0) {
-          setIsAligning(true);
+          setIsAnimating(true);
+          setAnimatingCodes(new Set(currentKeys.map((k) => k.code)));
           alignmentAnimRef.current = Animated.parallel(animations);
           alignmentAnimRef.current.start(() => {
-            setIsAligning(false);
+            setIsAnimating(false);
+            setAnimatingCodes(new Set());
             setKeys((prev) =>
               prev.map((k) => {
                 const target = targetMap.get(k.code);
                 if (!target) return k;
                 return {
                   ...k,
-                  visualPosition: { x: target.targetX, y: target.targetY },
+                  visualPosition: { x: target.x, y: target.y },
                 };
               })
             );
@@ -289,10 +311,49 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
         return currentKeys;
       });
     },
+    resetPositions: () => {
+      const { width, height } = panelSizeRef.current;
+      const cols = Math.floor(width / CELL_SIZE);
+      if (cols === 0) return;
+
+      const defaults = keys.map((k, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        return {
+          ...k,
+          visualPosition: { x: col * CELL_SIZE, y: row * CELL_SIZE },
+        };
+      });
+
+      const animations: Animated.CompositeAnimation[] = [];
+      for (const key of defaults) {
+        const anim = getAnim(key.code);
+        const curX = (anim as any).__getValue?.().x ?? (anim as any)._value?.x ?? key.visualPosition.x;
+        const curY = (anim as any).__getValue?.().y ?? (anim as any)._value?.y ?? key.visualPosition.y;
+        anim.setValue({ x: curX, y: curY });
+        animations.push(
+          Animated.timing(anim, {
+            toValue: key.visualPosition,
+            duration: 300,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          })
+        );
+      }
+
+      setIsAnimating(true);
+      setAnimatingCodes(new Set(defaults.map((k) => k.code)));
+      Animated.parallel(animations).start(() => {
+        setKeys(defaults);
+        setIsAnimating(false);
+        setAnimatingCodes(new Set());
+      });
+    },
     resetToCommitted: () => {
       alignmentAnimRef.current?.stop();
       alignmentAnimRef.current = null;
-      setIsAligning(false);
+      setIsAnimating(false);
+      setAnimatingCodes(new Set());
       setKeys(committedKeys.map((k) => ({ ...k })));
       setZOrder([...committedZOrder]);
       animsRef.current = {};
@@ -306,7 +367,8 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
     resetEverything: () => {
       alignmentAnimRef.current?.stop();
       alignmentAnimRef.current = null;
-      setIsAligning(false);
+      setIsAnimating(false);
+      setAnimatingCodes(new Set());
       const defaults = [
         { code: 'KeyW', label: 'W', visualPosition: { x: CELL_SIZE, y: 0 } },
         { code: 'KeyA', label: 'A', visualPosition: { x: 0, y: CELL_SIZE } },
@@ -352,10 +414,23 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
         onMoveShouldSetPanResponder: () => !!layoutMode,
         onPanResponderGrant: () => {
           draggingCodeRef.current = code;
-          const key = keys.find((k) => k.code === code);
-          if (key) {
-            dragStartPosRef.current[code] = { ...key.visualPosition };
-          }
+
+          // Cancel animation for this key only
+          const anim = getAnim(code);
+          anim.stopAnimation();
+          setAnimatingCodes((prev) => {
+            const next = new Set(prev);
+            next.delete(code);
+            if (next.size === 0) {
+              setIsAnimating(false);
+            }
+            return next;
+          });
+
+          // Read current animated value as drag start position
+          const curValue = (anim as any).__getValue?.();
+          dragStartPosRef.current[code] = curValue || { x: 0, y: 0 };
+
           setZOrder((prev) => {
             const rest = prev.filter((c) => c !== code);
             return [...rest, code];
@@ -400,7 +475,7 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
         },
       });
     },
-    [layoutMode, keys, getAnim]
+    [layoutMode, getAnim]
   );
 
   const panResponders = useMemo(() => {

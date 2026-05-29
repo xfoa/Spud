@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Surface, useTheme, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -80,9 +80,10 @@ export default function GameControllerScreen() {
     new Set(config.keys.map((k) => k.code))
   );
 
-  const handleKeysChange = useCallback((keys: import('@/hooks/use-layout-config').KeyConfig[]) => {
-    setSelectedKeys(new Set(keys.map((k) => k.code)));
-  }, []);
+  // Derive selected keys from config rather than from intermediate KeyPanel state
+  useEffect(() => {
+    setSelectedKeys(new Set(config.keys.map((k) => k.code)));
+  }, [config]);
 
   const handleToggleKey = useCallback((code: string, label: string) => {
     if (selectedKeys.has(code)) {
@@ -130,7 +131,6 @@ export default function GameControllerScreen() {
               committedZOrder={config.keyZOrder}
               onKeyDown={handleKeyDown}
               onKeyUp={handleKeyUp}
-              onKeysChange={handleKeysChange}
               onCancel={handleCancelLayout}
               onAccept={handleConfirmLayout}
               onOpenMenu={handleOpenMenu}
@@ -196,6 +196,7 @@ export default function GameControllerScreen() {
         selectedKeys={selectedKeys}
         onToggleKey={handleToggleKey}
         onResetKeys={handleResetKeys}
+        canAddKey={() => keyPanelRef.current?.canAddKey() ?? false}
       />
     </View>
   );

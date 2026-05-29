@@ -75,6 +75,20 @@ async function setItem(key: string, value: string): Promise<void> {
   }
 }
 
+function validateKeyConfig(config: LayoutConfig): LayoutConfig {
+  const validKeys: KeyConfig[] = [];
+  for (const key of config.keys) {
+    const x = key.visualPosition?.x;
+    const y = key.visualPosition?.y;
+    if (typeof x === 'number' && typeof y === 'number' && isFinite(x) && isFinite(y) && x >= 0 && y >= 0) {
+      validKeys.push(key);
+    } else {
+      validKeys.push({ ...key, visualPosition: { x: 0, y: 0 } });
+    }
+  }
+  return { ...config, keys: validKeys };
+}
+
 export function useLayoutConfig() {
   const [config, setConfig] = useState<LayoutConfig>(defaultConfig);
   const [loaded, setLoaded] = useState(false);
@@ -91,7 +105,7 @@ export function useLayoutConfig() {
               parsed.keys.length > 0 &&
               typeof parsed.keys[0].visualPosition === 'object';
             if (hasValidKeys) {
-              setConfig({ ...defaultConfig, ...parsed });
+              setConfig(validateKeyConfig({ ...defaultConfig, ...parsed }));
             }
           } catch {
             // ignore invalid config

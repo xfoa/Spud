@@ -15,6 +15,7 @@ interface KeyboardModalProps {
   selectedKeys: Set<string>;
   onToggleKey: (code: string, label: string) => void;
   onResetKeys?: () => void;
+  canAddKey?: () => boolean;
 }
 
 interface KeyDef {
@@ -295,17 +296,21 @@ function computeLayout(keySize: number): {
 const KeyButton = React.memo(function KeyButton({
   keyDef,
   selected,
+  disabled,
   onToggle,
 }: {
   keyDef: KeyPosition;
   selected: boolean;
+  disabled: boolean;
   onToggle: (code: string, label: string) => void;
 }) {
   const theme = useTheme();
 
   const handlePress = useCallback(() => {
-    onToggle(keyDef.code, keyDef.label);
-  }, [keyDef.code, keyDef.label, onToggle]);
+    if (!disabled) {
+      onToggle(keyDef.code, keyDef.label);
+    }
+  }, [disabled, keyDef.code, keyDef.label, onToggle]);
 
   return (
     <Pressable
@@ -319,7 +324,9 @@ const KeyButton = React.memo(function KeyButton({
         borderRadius: 4,
         borderWidth: 1,
         borderColor: selected ? theme.colors.primary : theme.colors.outlineVariant,
-        backgroundColor: selected
+        backgroundColor: disabled
+          ? 'rgba(0,0,0,0.12)'
+          : selected
           ? theme.colors.primaryContainer
           : theme.colors.surfaceVariant,
         justifyContent: 'center',
@@ -333,7 +340,9 @@ const KeyButton = React.memo(function KeyButton({
           fontSize: 10,
           fontWeight: '600',
           textAlign: 'center',
-          color: selected
+          color: disabled
+            ? theme.colors.outline
+            : selected
             ? theme.colors.onPrimaryContainer
             : theme.colors.onSurfaceVariant,
         }}
@@ -344,7 +353,7 @@ const KeyButton = React.memo(function KeyButton({
   );
 });
 
-export function KeyboardModal({ visible, onDismiss, selectedKeys, onToggleKey, onResetKeys }: KeyboardModalProps) {
+export function KeyboardModal({ visible, onDismiss, selectedKeys, onToggleKey, onResetKeys, canAddKey }: KeyboardModalProps) {
   const theme = useTheme();
   const { width: winW } = useWindowDimensions();
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
@@ -439,14 +448,20 @@ export function KeyboardModal({ visible, onDismiss, selectedKeys, onToggleKey, o
                     height: contentHeight,
                   }}
                 >
-                  {keyPositions.map((key) => (
-                    <KeyButton
-                      key={key.code}
-                      keyDef={key}
-                      selected={selectedKeys.has(key.code)}
-                      onToggle={onToggleKey}
-                    />
-                  ))}
+                  {keyPositions.map((key) => {
+                    const selected = selectedKeys.has(key.code);
+                    const atCapacity = canAddKey ? !canAddKey() : false;
+                    const disabled = !selected && atCapacity;
+                    return (
+                      <KeyButton
+                        key={key.code}
+                        keyDef={key}
+                        selected={selected}
+                        disabled={disabled}
+                        onToggle={onToggleKey}
+                      />
+                    );
+                  })}
                 </View>
               </Animated.ScrollView>
             )}
