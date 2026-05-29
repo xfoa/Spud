@@ -3,16 +3,10 @@ import { Platform } from 'react-native';
 
 const STORAGE_KEY = '@spud:layout-config';
 
-export interface ButtonOffset {
-  x: number;
-  y: number;
-}
-
 export interface KeyConfig {
   code: string;
   label: string;
-  offset: ButtonOffset;
-  storedPosition: { col: number; row: number };
+  visualPosition: { x: number; y: number };
 }
 
 export interface LayoutConfig {
@@ -30,10 +24,10 @@ export const defaultConfig: LayoutConfig = {
   touchpadLeft: 8,
   touchpadRight: 36,
   keys: [
-    { code: 'KeyW', label: 'W', offset: { x: 0, y: 0 }, storedPosition: { col: 1, row: 0 } },
-    { code: 'KeyA', label: 'A', offset: { x: 0, y: 0 }, storedPosition: { col: 0, row: 1 } },
-    { code: 'KeyS', label: 'S', offset: { x: 0, y: 0 }, storedPosition: { col: 1, row: 1 } },
-    { code: 'KeyD', label: 'D', offset: { x: 0, y: 0 }, storedPosition: { col: 2, row: 1 } },
+    { code: 'KeyW', label: 'W', visualPosition: { x: 80, y: 0 } },
+    { code: 'KeyA', label: 'A', visualPosition: { x: 0, y: 80 } },
+    { code: 'KeyS', label: 'S', visualPosition: { x: 80, y: 80 } },
+    { code: 'KeyD', label: 'D', visualPosition: { x: 160, y: 80 } },
   ],
   keyZOrder: ['KeyW', 'KeyA', 'KeyS', 'KeyD'],
 };
@@ -45,10 +39,10 @@ export function createDefaultConfig(): LayoutConfig {
     touchpadLeft: 8,
     touchpadRight: 36,
     keys: [
-      { code: 'KeyW', label: 'W', offset: { x: 0, y: 0 }, storedPosition: { col: 1, row: 0 } },
-      { code: 'KeyA', label: 'A', offset: { x: 0, y: 0 }, storedPosition: { col: 0, row: 1 } },
-      { code: 'KeyS', label: 'S', offset: { x: 0, y: 0 }, storedPosition: { col: 1, row: 1 } },
-      { code: 'KeyD', label: 'D', offset: { x: 0, y: 0 }, storedPosition: { col: 2, row: 1 } },
+      { code: 'KeyW', label: 'W', visualPosition: { x: 80, y: 0 } },
+      { code: 'KeyA', label: 'A', visualPosition: { x: 0, y: 80 } },
+      { code: 'KeyS', label: 'S', visualPosition: { x: 80, y: 80 } },
+      { code: 'KeyD', label: 'D', visualPosition: { x: 160, y: 80 } },
     ],
     keyZOrder: ['KeyW', 'KeyA', 'KeyS', 'KeyD'],
   };
@@ -95,7 +89,7 @@ export function useLayoutConfig() {
               parsed.keys &&
               Array.isArray(parsed.keys) &&
               parsed.keys.length > 0 &&
-              typeof parsed.keys[0].storedPosition === 'object';
+              typeof parsed.keys[0].visualPosition === 'object';
             if (hasValidKeys) {
               setConfig({ ...defaultConfig, ...parsed });
             }

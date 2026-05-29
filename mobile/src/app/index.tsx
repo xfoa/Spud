@@ -1,15 +1,15 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Surface, useTheme, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { MenuDrawer } from '@/components/menu-drawer';
-import { KeyPanel, findEmptyGridCell, recalculateStoredPositions, snapKeysToGrid, KeyPanelRef } from '@/components/key-panel';
+import { KeyPanel, KeyPanelRef } from '@/components/key-panel';
 import { TouchpadContainer } from '@/components/touchpad-container';
 import { KeyboardModal } from '@/components/keyboard-modal';
 import { useImmersiveMode } from '@/hooks/use-immersive-mode';
-import { useLayoutConfig, defaultConfig, LayoutConfig, KeyConfig } from '@/hooks/use-layout-config';
+import { useLayoutConfig, defaultConfig, LayoutConfig } from '@/hooks/use-layout-config';
 
 export default function GameControllerScreen() {
   const theme = useTheme();
@@ -20,8 +20,6 @@ export default function GameControllerScreen() {
   const [layoutMode, setLayoutMode] = useState(false);
   const [keyboardModalVisible, setKeyboardModalVisible] = useState(false);
   const [draft, setDraft] = useState<LayoutConfig>(config);
-  const [panelSize, setPanelSize] = useState({ width: 0, height: 0 });
-  const panelRef = useRef<View>(null);
   const keyPanelRef = useRef<KeyPanelRef>(null);
 
   useFocusEffect(
@@ -50,11 +48,15 @@ export default function GameControllerScreen() {
   }, [config]);
 
   const handleConfirmLayout = useCallback(() => {
-    saveConfig(draft);
+    const keys = keyPanelRef.current?.getKeys() ?? draft.keys;
+    const zOrder = keyPanelRef.current?.getZOrder() ?? draft.keyZOrder;
+    const next: LayoutConfig = { ...draft, keys, keyZOrder: zOrder };
+    saveConfig(next);
     setLayoutMode(false);
   }, [draft, saveConfig]);
 
   const handleCancelLayout = useCallback(() => {
+    keyPanelRef.current?.resetToCommitted();
     setLayoutMode(false);
   }, []);
 
@@ -74,71 +76,28 @@ export default function GameControllerScreen() {
     console.log('Key up:', code);
   }, []);
 
-  const handleButtonMove = useCallback((code: string, x: number, y: number) => {
-    setDraft((prev) => ({
-      ...prev,
-      keys: prev.keys.map((k) => (k.code === code ? { ...k, offset: { x, y } } : k)),
-    }));
-  }, []);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(
+    new Set(config.keys.map((k) => k.code))
+  );
 
-  const handleBringToFront = useCallback((code: string) => {
-    setDraft((prev) => {
-      const order = [...(prev.keyZOrder ?? prev.keys.map((k) => k.code))];
-      const idx = order.indexOf(code);
-      if (idx !== -1) {
-        order.splice(idx, 1);
-      }
-      order.push(code);
-      return { ...prev, keyZOrder: order };
-    });
+  const handleKeysChange = useCallback((keys: import('@/hooks/use-layout-config').KeyConfig[]) => {
+    setSelectedKeys(new Set(keys.map((k) => k.code)));
   }, []);
-
-  const selectedKeys = useMemo(() => {
-    const active = layoutMode ? draft : config;
-    return new Set(active.keys.map((k) => k.code));
-  }, [layoutMode, draft, config]);
 
   const handleToggleKey = useCallback((code: string, label: string) => {
-    setDraft((prev) => {
-      const hasKey = prev.keys.some((k) => k.code === code);
-      if (hasKey) {
-        const afterRemove = prev.keys.filter((k) => k.code !== code);
-        return {
-          ...prev,
-          keys: recalculateStoredPositions(afterRemove, panelSize.width),
-          keyZOrder: prev.keyZOrder.filter((c) => c !== code),
-        };
-      } else {
-        const newCell = findEmptyGridCell(panelSize.width, prev.keys);
-        const newKey: KeyConfig = {
-          code,
-          label,
-          offset: { x: 0, y: 0 },
-          storedPosition: newCell,
-        };
-        const afterAdd = [...prev.keys, newKey];
-        return {
-          ...prev,
-          keys: recalculateStoredPositions(afterAdd, panelSize.width),
-          keyZOrder: [...prev.keyZOrder, code],
-        };
-      }
-    });
-  }, [panelSize.width]);
+    if (selectedKeys.has(code)) {
+      keyPanelRef.current?.removeKey(code);
+    } else {
+      keyPanelRef.current?.addKey(code, label);
+    }
+  }, [selectedKeys]);
 
   const handleResetOffsets = useCallback(() => {
-    const currentKeys = draft.keys;
-    const nextKeys = snapKeysToGrid(currentKeys, panelSize.width);
-    keyPanelRef.current?.prepareAlign(currentKeys, nextKeys);
-    setDraft((prev) => ({ ...prev, keys: nextKeys }));
-  }, [draft.keys, panelSize.width]);
+    keyPanelRef.current?.startAlignment();
+  }, []);
 
   const handleResetKeys = useCallback(() => {
-    setDraft((prev) => ({
-      ...prev,
-      keys: defaultConfig.keys.map((k) => ({ ...k, offset: { x: 0, y: 0 } })),
-      keyZOrder: [...defaultConfig.keyZOrder],
-    }));
+    keyPanelRef.current?.resetEverything();
   }, []);
 
   if (!loaded) {
@@ -147,16 +106,10 @@ export default function GameControllerScreen() {
     );
   }
 
-  const activeConfig = layoutMode ? draft : config;
-
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Surface style={[styles.leftPanel, { backgroundColor: theme.colors.surface }]} elevation={1}>
-        <View
-          ref={panelRef}
-          style={styles.leftPanelContent}
-          onLayout={(e) => setPanelSize(e.nativeEvent.layout)}
-        >
+        <View style={styles.leftPanelContent}>
           {layoutMode && (
             <View style={styles.buttonsResetButton}>
               <IconButton
@@ -173,13 +126,11 @@ export default function GameControllerScreen() {
             <KeyPanel
               ref={keyPanelRef}
               layoutMode={layoutMode}
-              keys={activeConfig.keys}
-              zOrder={activeConfig.keyZOrder}
-              panelRef={panelRef}
-              onMove={handleButtonMove}
-              onBringToFront={handleBringToFront}
+              committedKeys={config.keys}
+              committedZOrder={config.keyZOrder}
               onKeyDown={handleKeyDown}
               onKeyUp={handleKeyUp}
+              onKeysChange={handleKeysChange}
             />
           </View>
 
