@@ -90,7 +90,6 @@ impl InputInjector {
                                 post_mouse_relative(&hid, dx, dy, &pressed_buttons);
                             }
                             InjectCmd::KeyDown { code } => {
-                                eprintln!("[macos-inj] KeyDown evdev={code}");
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
                                     held_keys.insert(code, Instant::now() + REPEAT_INITIAL_DELAY);
                                     if let Ok(event) =
@@ -99,11 +98,10 @@ impl InputInjector {
                                         event.post(CGEventTapLocation::HID);
                                     }
                                 } else {
-                                    eprintln!("[macos-inj] No macOS keycode for evdev {code}");
+                                    eprintln!("[spud] No macOS keycode for evdev {code}");
                                 }
                             }
                             InjectCmd::KeyUp { code } => {
-                                eprintln!("[macos-inj] KeyUp evdev={code}");
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
                                     held_keys.remove(&code);
                                     if let Ok(event) =
@@ -112,7 +110,7 @@ impl InputInjector {
                                         event.post(CGEventTapLocation::HID);
                                     }
                                 } else {
-                                    eprintln!("[macos-inj] No macOS keycode for evdev {code}");
+                                    eprintln!("[spud] No macOS keycode for evdev {code}");
                                 }
                             }
                             InjectCmd::ButtonDown { code } => {

@@ -419,7 +419,6 @@ unsafe extern "system" fn keyboard_hook_proc(
     if down {
         let is_repeat = !PRESSED_KEYS.with(|p| p.borrow_mut().insert(vk));
         if is_repeat && !is_grabbed() {
-            eprintln!("[spud-winhook] repeat vk=0x{vk:04X} fwd (not grabbed)");
             return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
         }
 
@@ -446,7 +445,6 @@ unsafe extern "system" fn keyboard_hook_proc(
                         }
                     }
 
-                    eprintln!("[spud-winhook] HOTKEY grabbed={new_grabbed}");
                     send_event(InputEvent::HotkeyToggled { grabbed: new_grabbed });
                 }
                 return LRESULT(1); // Consume the hotkey event.
@@ -454,7 +452,6 @@ unsafe extern "system" fn keyboard_hook_proc(
         }
 
         if !is_grabbed() {
-            eprintln!("[spud-winhook] down vk=0x{vk:04X} fwd (not grabbed)");
             return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
         }
 
@@ -462,30 +459,21 @@ unsafe extern "system" fn keyboard_hook_proc(
         // Skip auto-repeat keydowns.
         if !is_repeat {
             if let Some(evdev) = windows_vk_to_evdev(vk) {
-                eprintln!("[spud-winhook] down vk=0x{vk:04X} evdev={evdev} SEND");
                 let event = InputEvent::KeyPress { keycode: evdev as u8 };
                 send_event(event);
-            } else {
-                eprintln!("[spud-winhook] down vk=0x{vk:04X} no-evdev DROP");
             }
-        } else {
-            eprintln!("[spud-winhook] repeat vk=0x{vk:04X} DROP (grabbed)");
         }
     } else {
         PRESSED_KEYS.with(|p| { p.borrow_mut().remove(&vk); });
 
         if !is_grabbed() {
-            eprintln!("[spud-winhook] up vk=0x{vk:04X} fwd (not grabbed)");
             return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
         }
 
         // While grabbed, translate and consume keyboard events.
         if let Some(evdev) = windows_vk_to_evdev(vk) {
-            eprintln!("[spud-winhook] up vk=0x{vk:04X} evdev={evdev} SEND");
             let event = InputEvent::KeyRelease { keycode: evdev as u8 };
             send_event(event);
-        } else {
-            eprintln!("[spud-winhook] up vk=0x{vk:04X} no-evdev DROP");
         }
     }
 

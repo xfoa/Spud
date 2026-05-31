@@ -391,7 +391,6 @@ async fn run_server(
                                         };
                                         if let Some(s) = seq {
                                             if s != 0 && session.key_history.contains(s) {
-                                                eprintln!("[server-dedup] {src}: {event:?} seq={s} DUPLICATE");
                                                 continue; // duplicate
                                             }
                                             if s != 0 {
@@ -410,12 +409,23 @@ async fn run_server(
                                             crate::net::Event::MouseButtonRepeat(b) if !session.tracker.has_button(*b)
                                         );
 
+                                        // Remember whether key/button was held before tracker
+                                        // updates state, so we can skip injecting orphan ups.
+                                        let key_was_down = match event {
+                                            crate::net::Event::KeyUp(c, _) => Some(session.tracker.has_key(*c)),
+                                            _ => None,
+                                        };
+                                        let button_was_down = match event {
+                                            crate::net::Event::MouseButton { button: b, pressed: false } => Some(session.tracker.has_button(*b)),
+                                            _ => None,
+                                        };
+
                                         let actions = session.tracker.handle_event(event);
                                         if actions.is_empty() {
-                                            eprintln!("[server-tracker] {src}: {event:?} -> no action");
+                                            println!("[server] {src}: {event:?}");
                                         } else {
                                             for action in &actions {
-                                                eprintln!("[server-tracker] {src}: {event:?} -> {action}");
+                                                println!("[server] {src}: {action}");
                                             }
                                         }
                                         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -436,7 +446,9 @@ async fn run_server(
                                                         inj.key_down(*code);
                                                     }
                                                     crate::net::Event::KeyUp(code, _) => {
-                                                        inj.key_up(*code);
+                                                        if key_was_down == Some(true) {
+                                                            inj.key_up(*code);
+                                                        }
                                                     }
                                                     crate::net::Event::KeyRepeat(_, _) => {
                                                         // Heartbeat - tracker already updated, no injection needed
@@ -445,7 +457,9 @@ async fn run_server(
                                                         inj.button_down(wire_to_platform_button(*button));
                                                     }
                                                     crate::net::Event::MouseButton { button, pressed: false } => {
-                                                        inj.button_up(wire_to_platform_button(*button));
+                                                        if button_was_down == Some(true) {
+                                                            inj.button_up(wire_to_platform_button(*button));
+                                                        }
                                                     }
                                                     crate::net::Event::MouseButtonRepeat(_) => {}
                                                     crate::net::Event::Wheel { dx, dy, .. } => {

@@ -428,29 +428,14 @@ impl ClientConnection {
                     Some(mut event) = udp_rx.recv() => {
                         // Assign sequence numbers to keyboard and wheel events.
                         match &mut event {
-                            Event::KeyDown(code, seq) => {
+                            Event::KeyDown(_, seq) |
+                            Event::KeyUp(_, seq) |
+                            Event::KeyRepeat(_, seq) => {
                                 *seq = next_key_seq;
                                 next_key_seq = next_key_seq.wrapping_add(1);
                                 if next_key_seq == 0 {
                                     next_key_seq = 1; // reserve 0 for backward compat
                                 }
-                                eprintln!("[client-udp] KeyDown({code}) seq={seq}");
-                            }
-                            Event::KeyUp(code, seq) => {
-                                *seq = next_key_seq;
-                                next_key_seq = next_key_seq.wrapping_add(1);
-                                if next_key_seq == 0 {
-                                    next_key_seq = 1;
-                                }
-                                eprintln!("[client-udp] KeyUp({code}) seq={seq}");
-                            }
-                            Event::KeyRepeat(code, seq) => {
-                                *seq = next_key_seq;
-                                next_key_seq = next_key_seq.wrapping_add(1);
-                                if next_key_seq == 0 {
-                                    next_key_seq = 1;
-                                }
-                                eprintln!("[client-udp] KeyRepeat({code}) seq={seq}");
                             }
                             Event::Wheel { seq, .. } => {
                                 *seq = next_key_seq;
