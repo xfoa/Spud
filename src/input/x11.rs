@@ -66,6 +66,11 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
     let root = screen.root;
     let mut pointer = Pointer::new(screen.width_in_pixels, screen.height_in_pixels);
 
+    // X11 auto-repeat simulation detection: when X11 auto-repeat is enabled,
+    // the server generates KeyRelease+KeyPress pairs instead of just repeating
+    // KeyPress. We detect this by peeking at the next event in the queue.
+    const AUTOREPEAT_TIME_WINDOW: u32 = 50; // milliseconds
+
     conn.xfixes_query_version(5, 0)?.reply()?;
 
     let (modifiers, keycode) = match parse_hotkey(&conn, hotkey) {
@@ -131,12 +136,30 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
                     }
                 }
                 Event::KeyRelease(kr) if grabbed => {
-                    eprintln!("[spud-x11] KeyRelease keycode={}", kr.detail);
-                    if output
-                        .try_send(InputEvent::KeyRelease { keycode: kr.detail })
-                        .is_err()
-                    {
-                        break;
+                    // X11 auto-repeat detection: when X11 auto-repeat is enabled, the server
+                    // generates KeyRelease+KeyPress pairs instead of just repeating KeyPress.
+                    // Detect this by checking if a KeyPress with the same keycode immediately
+                    // follows this KeyRelease in the event queue.
+                    let is_autorepeat = match conn.poll_for_event()? {
+                        Some(Event::KeyPress(kp)) => {
+                            let time_diff = kp.time.saturating_sub(kr.time);
+                            kp.detail == kr.detail && time_diff <= AUTOREPEAT_TIME_WINDOW
+                        }
+                        _ => false,
+                    };
+
+                    if is_autorepeat {
+                        // This is an X11 auto-repeat pair - suppress both events
+                        eprintln!("[spud-x11] KeyRelease+KeyPress keycode={} suppressed (auto-repeat)", kr.detail);
+                    } else {
+                        // Real key release - send it
+                        eprintln!("[spud-x11] KeyRelease keycode={}", kr.detail);
+                        if output
+                            .try_send(InputEvent::KeyRelease { keycode: kr.detail })
+                            .is_err()
+                        {
+                            break;
+                        }
                     }
                 }
                 Event::MotionNotify(mn) if grabbed => {
