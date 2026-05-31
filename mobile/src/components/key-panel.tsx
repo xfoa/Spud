@@ -1,4 +1,4 @@
-import {
+import React, {
   useRef,
   useMemo,
   useState,
@@ -6,12 +6,116 @@ import {
   forwardRef,
   useImperativeHandle,
 } from 'react';
-import { View, StyleSheet, PanResponder, Animated, Easing } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  PanResponder,
+  Animated,
+  Easing,
+  type GestureResponderHandlers,
+} from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 import { useTheme, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ControllerButton } from './controller-button';
 import { KeyConfig } from '@/hooks/use-layout-config';
+
+const KeyBackground = React.memo(function KeyBackground({
+  anim,
+  pressed,
+  zIndex,
+}: {
+  anim: Animated.ValueXY;
+  pressed: boolean;
+  zIndex: number;
+}) {
+  const theme = useTheme();
+  return (
+    <Animated.View
+      pointerEvents="none"
+      collapsable={false}
+      style={[
+        styles.buttonBase,
+        {
+          backgroundColor: pressed
+            ? theme.colors.primaryContainer
+            : theme.colors.surfaceVariant,
+          zIndex,
+          transform: [{ translateX: anim.x }, { translateY: anim.y }],
+        },
+      ]}
+    />
+  );
+});
+
+const KeyButtonView = React.memo(function KeyButtonView({
+  keyConfig,
+  anim,
+  zIndex,
+  layoutMode,
+  panHandlers,
+  onPressIn,
+  onPressOut,
+}: {
+  keyConfig: KeyConfig;
+  anim: Animated.ValueXY;
+  zIndex: number;
+  layoutMode?: boolean;
+  panHandlers?: GestureResponderHandlers;
+  onPressIn?: (code: string) => void;
+  onPressOut?: (code: string) => void;
+}) {
+  const theme = useTheme();
+  const button = (
+    <ControllerButton
+      label={keyConfig.label}
+      transparent={true}
+      disabled={layoutMode}
+      onPressIn={layoutMode ? undefined : () => onPressIn?.(keyConfig.code)}
+      onPressOut={layoutMode ? undefined : () => onPressOut?.(keyConfig.code)}
+    />
+  );
+
+  if (layoutMode) {
+    return (
+      <Animated.View
+        collapsable={false}
+        style={[
+          styles.buttonBase,
+          {
+            zIndex,
+            transform: [{ translateX: anim.x }, { translateY: anim.y }],
+          },
+        ]}
+        {...panHandlers}
+      >
+        {button}
+        <View style={styles.dragIndicator} pointerEvents="none">
+          <MaterialCommunityIcons
+            name="cursor-move"
+            size={16}
+            color={theme.colors.primary}
+          />
+        </View>
+      </Animated.View>
+    );
+  }
+
+  return (
+    <Animated.View
+      collapsable={false}
+      style={[
+        styles.buttonBase,
+        {
+          zIndex,
+          transform: [{ translateX: anim.x }, { translateY: anim.y }],
+        },
+      ]}
+    >
+      {button}
+    </Animated.View>
+  );
+});
 
 const BUTTON_SIZE = 72;
 const GAP = 8;
@@ -51,6 +155,10 @@ function snapPosition(x: number, y: number): { x: number; y: number } {
   };
 }
 
+// TODO: find when this is being run and optimise it. ideas:
+// 1. memoise calls
+// 2. store constants outwith function
+// 3. call once, store a list of empty spaces
 function findEmptyCell(
   existingKeys: { visualPosition: { x: number; y: number } }[],
   maxWidth: number,
@@ -64,25 +172,25 @@ function findEmptyCell(
 
   const maxCols = Math.floor(maxWidth / CELL_SIZE);
   const maxRows = Math.floor(maxHeight / CELL_SIZE);
-
+  
   // Tier 1: even snap indices (non-overlapping)
   for (let row = 0; row < maxRows; row++) {
     for (let col = 0; col < maxCols; col++) {
       const x = col * CELL_SIZE;
       const y = row * CELL_SIZE;
-      if (x + BUTTON_SIZE > maxWidth || y + BUTTON_SIZE > maxHeight) continue;
       if (!occupied.has(`${x},${y}`)) {
         return { x, y };
       }
     }
   }
 
-  // Tier 2: every 2nd odd snap index (sparse overlapping)
-  for (let row = 0; row < maxRows * SNAP_RESOLUTION; row += 4) {
-    for (let col = 0; col < maxCols * SNAP_RESOLUTION; col += 4) {
-      const x = col * SNAP_STEP + SNAP_STEP;
-      const y = row * SNAP_STEP + SNAP_STEP;
-      if (x + BUTTON_SIZE > maxWidth || y + BUTTON_SIZE > maxHeight) continue;
+  // Tier 2: every 2nd odd snap index 
+  const maxT2Cols = Math.floor(maxWidth / CELL_SIZE - 1 / SNAP_RESOLUTION);
+  const maxT2Rows = Math.floor(maxHeight / CELL_SIZE - 1 / SNAP_RESOLUTION);
+  for (let row = 0; row < maxT2Rows ; row += 2) {
+    for (let col = 0; col < maxT2Cols; col += 2) {
+      const x = col * CELL_SIZE + Math.floor(CELL_SIZE / SNAP_RESOLUTION);
+      const y = row * CELL_SIZE + Math.floor(CELL_SIZE / SNAP_RESOLUTION);
       if (!occupied.has(`${x},${y}`)) {
         return { x, y };
       }
@@ -133,10 +241,10 @@ function computeAlignmentTargets(
       continue;
     }
 
-    // Fall back to Tier 2: every 2nd odd snap index
+    // Fall back to Tier 2: every 2nd odd snap index starting from index 5
     let bestTier2: { x: number; y: number; dist: number } | null = null;
-    for (let row = 0; row < maxRows * SNAP_RESOLUTION; row += 4) {
-      for (let col = 0; col < maxCols * SNAP_RESOLUTION; col += 4) {
+    for (let row = 4; row < maxRows * SNAP_RESOLUTION; row += 4) {
+      for (let col = 4; col < maxCols * SNAP_RESOLUTION; col += 4) {
         const cx = col * SNAP_STEP + SNAP_STEP;
         const cy = row * SNAP_STEP + SNAP_STEP;
         if (cx + BUTTON_SIZE > maxWidth || cy + BUTTON_SIZE > maxHeight) continue;
@@ -185,15 +293,40 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
   const [zOrder, setZOrder] = useState<string[]>(committedZOrder);
   const [pressed, setPressed] = useState<Record<string, boolean>>({});
   const [isAnimating, setIsAnimating] = useState(false);
-  const [animatingCodes, setAnimatingCodes] = useState<Set<string>>(new Set());
+  const capacityRef = useRef(0);
+
+  const zIndexMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (let i = 0; i < zOrder.length; i++) {
+      map[zOrder[i]] = i;
+    }
+    return map;
+  }, [zOrder]);
 
   const panelSizeRef = useRef({ width: 0, height: 0 });
   const alignmentTargetRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
+  const recalcCapacity = useCallback(() => {
+    const { width, height } = panelSizeRef.current;
+    if (width === 0 || height === 0) {
+      capacityRef.current = 0;
+      return;
+    }
+    const maxCols = Math.floor(width / CELL_SIZE);
+    const maxRows = Math.floor(height / CELL_SIZE);
+    const tier1Capacity = maxCols * maxRows;
+    const tier2Capacity =
+      Math.floor(maxRows / 2) *
+      Math.floor(maxCols / 2);
+    capacityRef.current = tier1Capacity + tier2Capacity;
+    console.log(maxCols, maxRows, tier1Capacity, tier2Capacity, capacityRef.current);
+  }, []);
+
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
     panelSizeRef.current = { width, height };
-  }, []);
+    recalcCapacity();
+  }, [recalcCapacity]);
 
   const animsRef = useRef<Record<string, Animated.ValueXY>>({});
   const draggingCodeRef = useRef<string | null>(null);
@@ -235,18 +368,7 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
       return keys.map((k) => ({ ...k }));
     },
     getZOrder: () => [...zOrder],
-    canAddKey: () => {
-      const { width, height } = panelSizeRef.current;
-      if (width === 0 || height === 0) return false;
-      const maxCols = Math.floor(width / CELL_SIZE);
-      const maxRows = Math.floor(height / CELL_SIZE);
-      const tier1Capacity = maxCols * maxRows;
-      const tier2Cols = Math.floor((maxCols * SNAP_RESOLUTION - 1) / 4) + 1;
-      const tier2Rows = Math.floor((maxRows * SNAP_RESOLUTION - 1) / 4) + 1;
-      const tier2Capacity = tier2Cols * tier2Rows;
-      const totalCapacity = tier1Capacity + tier2Capacity;
-      return keys.length < totalCapacity;
-    },
+    canAddKey: () => Object.keys(animsRef.current).length < capacityRef.current,
     isAnimating: () => isAnimating,
     addKey: (code: string, label: string) => {
       setKeys((prev) => {
@@ -267,11 +389,13 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
         if (prev.includes(code)) return prev;
         return [...prev, code];
       });
+      console.log(keys, capacityRef.current);
     },
     removeKey: (code: string) => {
       setKeys((prev) => prev.filter((k) => k.code !== code));
       setZOrder((prev) => prev.filter((c) => c !== code));
       delete animsRef.current[code];
+      console.log(keys, capacityRef.current);
     },
     startAlignment: () => {
       setKeys((currentKeys) => {
@@ -306,7 +430,6 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
 
         if (animations.length > 0) {
           setIsAnimating(true);
-          setAnimatingCodes(new Set(currentKeys.map((k) => k.code)));
           alignmentAnimRef.current = Animated.parallel(animations);
           alignmentAnimRef.current.start(() => {
             // Sync JS animated values to targets so the next render
@@ -319,7 +442,6 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
               }
             }
             setIsAnimating(false);
-            setAnimatingCodes(new Set());
             setKeys((prev) =>
               prev.map((k) => {
                 const target = targetMap.get(k.code);
@@ -368,18 +490,15 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
       }
 
       setIsAnimating(true);
-      setAnimatingCodes(new Set(defaults.map((k) => k.code)));
       Animated.parallel(animations).start(() => {
         setKeys(defaults);
         setIsAnimating(false);
-        setAnimatingCodes(new Set());
       });
     },
     resetToCommitted: () => {
       alignmentAnimRef.current?.stop();
       alignmentAnimRef.current = null;
       setIsAnimating(false);
-      setAnimatingCodes(new Set());
       setKeys(committedKeys.map((k) => ({ ...k })));
       setZOrder([...committedZOrder]);
       animsRef.current = {};
@@ -394,7 +513,6 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
       alignmentAnimRef.current?.stop();
       alignmentAnimRef.current = null;
       setIsAnimating(false);
-      setAnimatingCodes(new Set());
       const defaults = [
         { code: 'KeyW', label: 'W', visualPosition: { x: CELL_SIZE, y: 0 } },
         { code: 'KeyA', label: 'A', visualPosition: { x: 0, y: CELL_SIZE } },
@@ -433,169 +551,99 @@ export const KeyPanel = forwardRef<KeyPanelRef, KeyPanelProps>(function KeyPanel
     [onKeyUp]
   );
 
-  const createPanResponder = useCallback(
+  const panRespondersRef = useRef<Record<string, ReturnType<typeof PanResponder.create>>>({});
+
+  const getPanHandlers = useCallback(
     (code: string) => {
-      return PanResponder.create({
-        onStartShouldSetPanResponder: () => !!layoutMode,
-        onMoveShouldSetPanResponder: () => !!layoutMode,
-        onPanResponderGrant: () => {
-          draggingCodeRef.current = code;
+      if (!panRespondersRef.current[code]) {
+        panRespondersRef.current[code] = PanResponder.create({
+          onStartShouldSetPanResponder: () => !!layoutMode,
+          onMoveShouldSetPanResponder: () => !!layoutMode,
+          onPanResponderGrant: () => {
+            draggingCodeRef.current = code;
 
-          // Cancel animation for this key only
-          const anim = getAnim(code);
-          anim.stopAnimation();
-          setAnimatingCodes((prev) => {
-            const next = new Set(prev);
-            next.delete(code);
-            if (next.size === 0) {
-              setIsAnimating(false);
-            }
-            return next;
-          });
+            // Cancel animation for this key only (imperative, no re-render)
+            const anim = getAnim(code);
+            anim.stopAnimation();
 
-          // Read current animated value as drag start position
-          const curValue = (anim as any).__getValue?.();
-          dragStartPosRef.current[code] = curValue || { x: 0, y: 0 };
+            setZOrder((prev) => {
+              const rest = prev.filter((c) => c !== code);
+              return [...rest, code];
+            });
 
-          setZOrder((prev) => {
-            const rest = prev.filter((c) => c !== code);
-            return [...rest, code];
-          });
-        },
-        onPanResponderMove: (_, gestureState) => {
-          const start = dragStartPosRef.current[code];
-          if (!start) return;
-          const rawX = start.x + gestureState.dx;
-          const rawY = start.y + gestureState.dy;
-          const { width, height } = panelSizeRef.current;
-          const clamped = clampToPanel(rawX, rawY, width, height);
-          const anim = getAnim(code);
-          anim.setValue({ x: clamped.x, y: clamped.y });
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          const start = dragStartPosRef.current[code];
-          if (start) {
+            // Read current animated value as drag start position
+            const curValue = (anim as any).__getValue?.();
+            dragStartPosRef.current[code] = curValue || { x: 0, y: 0 };
+          },
+          onPanResponderMove: (_, gestureState) => {
+            const start = dragStartPosRef.current[code];
+            if (!start) return;
             const rawX = start.x + gestureState.dx;
             const rawY = start.y + gestureState.dy;
             const { width, height } = panelSizeRef.current;
             const clamped = clampToPanel(rawX, rawY, width, height);
-            setKeys((prev) =>
-              prev.map((k) =>
-                k.code === code
-                  ? { ...k, visualPosition: { x: clamped.x, y: clamped.y } }
-                  : k
-              )
-            );
-          }
-          draggingCodeRef.current = null;
-          delete dragStartPosRef.current[code];
-        },
-        onPanResponderTerminate: () => {
-          const start = dragStartPosRef.current[code];
-          if (start) {
             const anim = getAnim(code);
-            anim.setValue({ x: start.x, y: start.y });
-          }
-          draggingCodeRef.current = null;
-          delete dragStartPosRef.current[code];
-        },
-      });
+            anim.setValue({ x: clamped.x, y: clamped.y });
+          },
+          onPanResponderRelease: (_, gestureState) => {
+            const start = dragStartPosRef.current[code];
+            if (start) {
+              const rawX = start.x + gestureState.dx;
+              const rawY = start.y + gestureState.dy;
+              const { width, height } = panelSizeRef.current;
+              const clamped = clampToPanel(rawX, rawY, width, height);
+              setKeys((prev) =>
+                prev.map((k) =>
+                  k.code === code
+                    ? { ...k, visualPosition: { x: clamped.x, y: clamped.y } }
+                    : k
+                )
+              );
+            }
+            draggingCodeRef.current = null;
+            delete dragStartPosRef.current[code];
+          },
+          onPanResponderTerminate: () => {
+            const start = dragStartPosRef.current[code];
+            if (start) {
+              const anim = getAnim(code);
+              anim.setValue({ x: start.x, y: start.y });
+            }
+            draggingCodeRef.current = null;
+            delete dragStartPosRef.current[code];
+          },
+        });
+      }
+      return panRespondersRef.current[code].panHandlers;
     },
     [layoutMode, getAnim]
   );
 
-  const panResponders = useMemo(() => {
-    const result: Record<string, ReturnType<typeof PanResponder.create>> = {};
-    for (const key of keys) {
-      result[key.code] = createPanResponder(key.code);
-    }
-    return result;
-  }, [keys, createPanResponder]);
-
-  const renderBackground = (key: KeyConfig) => {
-    const anim = getAnim(key.code);
-    return (
-      <Animated.View
-        key={`bg-${key.code}`}
-        pointerEvents="none"
-        collapsable={false}
-        style={[
-          styles.buttonBase,
-          {
-            backgroundColor: pressed[key.code]
-              ? theme.colors.primaryContainer
-              : theme.colors.surfaceVariant,
-            zIndex: zOrder.indexOf(key.code),
-            transform: [{ translateX: anim.x }, { translateY: anim.y }],
-          },
-        ]}
-      />
-    );
-  };
-
-  const renderButton = (key: KeyConfig) => {
-    const anim = getAnim(key.code);
-    const zIndex = keys.length + zOrder.indexOf(key.code);
-    const button = (
-      <ControllerButton
-        label={key.label}
-        transparent={true}
-        disabled={layoutMode}
-        onPressIn={() => handlePressIn(key.code)}
-        onPressOut={() => handlePressOut(key.code)}
-      />
-    );
-
-    if (layoutMode) {
-      const panHandlers = panResponders[key.code]?.panHandlers;
-      return (
-        <Animated.View
-          key={key.code}
-          collapsable={false}
-          style={[
-            styles.buttonBase,
-            {
-              zIndex,
-              transform: [{ translateX: anim.x }, { translateY: anim.y }],
-            },
-          ]}
-          {...panHandlers}
-        >
-          {button}
-          <View style={styles.dragIndicator} pointerEvents="none">
-            <MaterialCommunityIcons
-              name="cursor-move"
-              size={16}
-              color={theme.colors.primary}
-            />
-          </View>
-        </Animated.View>
-      );
-    }
-
-    return (
-      <Animated.View
-        key={key.code}
-        collapsable={false}
-        style={[
-          styles.buttonBase,
-          {
-            zIndex,
-            transform: [{ translateX: anim.x }, { translateY: anim.y }],
-          },
-        ]}
-      >
-        {button}
-      </Animated.View>
-    );
-  };
 
   return (
     <View style={styles.panel} onLayout={handleLayout}>
       {/* Middle layer: key buttons */}
       <View style={styles.keysLayer} pointerEvents="box-none">
-        {keys.map((key) => renderBackground(key))}
-        {keys.map((key) => renderButton(key))}
+        {keys.map((key) => (
+          <KeyBackground
+            key={`bg-${key.code}`}
+            anim={getAnim(key.code)}
+            pressed={pressed[key.code] ?? false}
+            zIndex={zIndexMap[key.code] ?? 0}
+          />
+        ))}
+        {keys.map((key) => (
+          <KeyButtonView
+            key={key.code}
+            keyConfig={key}
+            anim={getAnim(key.code)}
+            zIndex={keys.length + (zIndexMap[key.code] ?? 0)}
+            layoutMode={layoutMode}
+            panHandlers={layoutMode ? getPanHandlers(key.code) : undefined}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+          />
+        ))}
       </View>
 
       {/* Top layer: action buttons */}

@@ -448,20 +448,22 @@ export function KeyboardModal({ visible, onDismiss, selectedKeys, onToggleKey, o
                     height: contentHeight,
                   }}
                 >
-                  {keyPositions.map((key) => {
-                    const selected = selectedKeys.has(key.code);
+                  {(() => {
                     const atCapacity = canAddKey ? !canAddKey() : false;
-                    const disabled = !selected && atCapacity;
-                    return (
-                      <KeyButton
-                        key={key.code}
-                        keyDef={key}
-                        selected={selected}
-                        disabled={disabled}
-                        onToggle={onToggleKey}
-                      />
-                    );
-                  })}
+                    return keyPositions.map((key) => {
+                      const selected = selectedKeys.has(key.code);
+                      const disabled = !selected && atCapacity;
+                      return (
+                        <KeyButton
+                          key={key.code}
+                          keyDef={key}
+                          selected={selected}
+                          disabled={disabled}
+                          onToggle={onToggleKey}
+                        />
+                      );
+                    });
+                  })()}
                 </View>
               </Animated.ScrollView>
             )}

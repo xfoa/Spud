@@ -16,17 +16,15 @@ export function ControllerButton({ label, transparent, disabled, onPressIn, onPr
 
   const handleTouchStart = useCallback((event: GestureResponderEvent) => {
     event.stopPropagation();
-    if (disabled) return;
     setPressed(true);
     onPressIn?.();
-  }, [disabled, onPressIn]);
+  }, [onPressIn]);
 
   const handleTouchEnd = useCallback((event: GestureResponderEvent) => {
     event.stopPropagation();
-    if (disabled) return;
     setPressed(false);
     onPressOut?.();
-  }, [disabled, onPressOut]);
+  }, [onPressOut]);
 
   const isPressed = pressed && !disabled;
 
@@ -43,9 +41,9 @@ export function ControllerButton({ label, transparent, disabled, onPressIn, onPr
           borderColor: theme.colors.outlineVariant,
         },
       ]}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={handleTouchEnd}
+      onTouchStart={disabled ? undefined : handleTouchStart}
+      onTouchEnd={disabled ? undefined : handleTouchEnd}
+      onTouchCancel={disabled ? undefined : handleTouchEnd}
     >
       <Text
         variant="titleLarge"

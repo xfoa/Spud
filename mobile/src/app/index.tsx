@@ -61,8 +61,10 @@ export default function GameControllerScreen() {
   }, []);
 
   const handleOpenKeyboard = useCallback(() => {
+    const currentKeys = keyPanelRef.current?.getKeys() ?? config.keys;
+    setSelectedKeys(new Set(currentKeys.map((k) => k.code)));
     setKeyboardModalVisible(true);
-  }, []);
+  }, [config]);
 
   const handleDismissKeyboard = useCallback(() => {
     setKeyboardModalVisible(false);
@@ -88,8 +90,18 @@ export default function GameControllerScreen() {
   const handleToggleKey = useCallback((code: string, label: string) => {
     if (selectedKeys.has(code)) {
       keyPanelRef.current?.removeKey(code);
-    } else {
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(code);
+        return next;
+      });
+    } else if (keyPanelRef.current?.canAddKey() ?? false) {
       keyPanelRef.current?.addKey(code, label);
+      setSelectedKeys((prev) => {
+        const next = new Set(prev);
+        next.add(code);
+        return next;
+      });
     }
   }, [selectedKeys]);
 
@@ -99,6 +111,7 @@ export default function GameControllerScreen() {
 
   const handleResetKeys = useCallback(() => {
     keyPanelRef.current?.resetEverything();
+    setSelectedKeys(new Set(defaultConfig.keys.map((k) => k.code)));
   }, []);
 
   if (!loaded) {
