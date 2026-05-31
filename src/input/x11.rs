@@ -108,6 +108,7 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
                     let mods = u16::from(kp.state) & RELEVANT_MODS;
                     if kp.detail == keycode && mods == modifiers {
                         grabbed = !grabbed;
+                        eprintln!("[spud-x11] hotkey toggled grabbed={grabbed}");
                         if grabbed {
                             grab_input(&conn, root, &mut pointer)?;
                         } else {
@@ -119,15 +120,18 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
                         {
                             break;
                         }
-                    } else if grabbed
-                        && output
+                    } else if grabbed {
+                        eprintln!("[spud-x11] KeyPress keycode={} mods={:x}", kp.detail, mods);
+                        if output
                             .try_send(InputEvent::KeyPress { keycode: kp.detail })
                             .is_err()
-                    {
-                        break;
+                        {
+                            break;
+                        }
                     }
                 }
                 Event::KeyRelease(kr) if grabbed => {
+                    eprintln!("[spud-x11] KeyRelease keycode={}", kr.detail);
                     if output
                         .try_send(InputEvent::KeyRelease { keycode: kr.detail })
                         .is_err()

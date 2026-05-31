@@ -422,10 +422,10 @@ async fn run_server(
 
                                         let actions = session.tracker.handle_event(event);
                                         if actions.is_empty() {
-                                            println!("[server] {src}: {event:?}");
+                                            eprintln!("[server-tracker] {src}: {event:?} -> no action");
                                         } else {
                                             for action in &actions {
-                                                println!("[server] {src}: {action}");
+                                                eprintln!("[server-tracker] {src}: {event:?} -> {action}");
                                             }
                                         }
                                         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -443,22 +443,30 @@ async fn run_server(
                                                 }
                                                 match event {
                                                     crate::net::Event::KeyDown(code, _) => {
+                                                        eprintln!("[server-inj] key_down({code})");
                                                         inj.key_down(*code);
                                                     }
                                                     crate::net::Event::KeyUp(code, _) => {
                                                         if key_was_down == Some(true) {
+                                                            eprintln!("[server-inj] key_up({code})");
                                                             inj.key_up(*code);
+                                                        } else {
+                                                            eprintln!("[server-inj] key_up({code}) SKIPPED orphan");
                                                         }
                                                     }
                                                     crate::net::Event::KeyRepeat(_, _) => {
                                                         // Heartbeat - tracker already updated, no injection needed
                                                     }
                                                     crate::net::Event::MouseButton { button, pressed: true } => {
+                                                        eprintln!("[server-inj] button_down({button})");
                                                         inj.button_down(wire_to_platform_button(*button));
                                                     }
                                                     crate::net::Event::MouseButton { button, pressed: false } => {
                                                         if button_was_down == Some(true) {
+                                                            eprintln!("[server-inj] button_up({button})");
                                                             inj.button_up(wire_to_platform_button(*button));
+                                                        } else {
+                                                            eprintln!("[server-inj] button_up({button}) SKIPPED orphan");
                                                         }
                                                     }
                                                     crate::net::Event::MouseButtonRepeat(_) => {}
@@ -607,6 +615,7 @@ async fn handle_client(
 
     let (uuid, conn_id) = generate_session();
     let session = SessionState::new(encrypt_udp, keys, peer, key_timeout_ms, screen_width, screen_height);
+    eprintln!("[server] new session conn={conn_id} from {peer}");
     sessions.insert(conn_id, session);
 
     let init = ControlMsg::SessionInit { conn_id, uuid, encrypt: encrypt_udp, auth: require_auth && !passphrase_hash.is_empty(), screen_width, screen_height };
@@ -668,6 +677,7 @@ async fn handle_client(
         }
     }
 
+    eprintln!("[server] session removed conn={conn_id}");
     sessions.remove(&conn_id);
 }
 
