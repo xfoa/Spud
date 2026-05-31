@@ -54,11 +54,21 @@ impl InputInjector {
             };
 
             // Scroll and cursor query still need Core Graphics.
-            let cg_source = match CGEventSource::new(CGEventSourceStateID::HIDSystemState) {
+            // Use Private state to bypass other apps' CGEvent taps (e.g., Parsec).
+            // HIDSystemState events go through the system event tap chain, which
+            // Parsec intercepts. Private state events bypass taps, ensuring our
+            // injected events reach target applications.
+            let cg_source = match CGEventSource::new(CGEventSourceStateID::Private) {
                 Ok(s) => s,
                 Err(_) => {
-                    eprintln!("[spud] Failed to create CGEventSource");
-                    return;
+                    eprintln!("[spud] Failed to create CGEventSource (Private), falling back to HIDSystemState");
+                    match CGEventSource::new(CGEventSourceStateID::HIDSystemState) {
+                        Ok(s) => s,
+                        Err(_) => {
+                            eprintln!("[spud] Failed to create CGEventSource (HIDSystemState)");
+                            return;
+                        }
+                    }
                 }
             };
 
