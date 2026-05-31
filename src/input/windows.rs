@@ -167,9 +167,7 @@ fn run(
     hotkey: &str,
     tx: MpscSender<InputEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    eprintln!("[spud] Windows input backend starting, hotkey={hotkey}");
     let (hotkey_vk, hotkey_mods) = parse_hotkey(hotkey)?;
-    eprintln!("[spud] Parsed hotkey: vk=0x{hotkey_vk:04X}, mods={hotkey_mods:04b}");
     set_hotkey_vk(hotkey_vk);
     set_hotkey_mods(hotkey_mods);
     set_tx(tx);
@@ -194,8 +192,6 @@ fn run(
             0,
         )?
     };
-    eprintln!("[spud] Keyboard hook installed");
-
     let mouse_hook = unsafe {
         SetWindowsHookExW(
             WH_MOUSE_LL,
@@ -204,8 +200,6 @@ fn run(
             0,
         )?
     };
-    eprintln!("[spud] Mouse hook installed");
-
     // Create a message-only window and register the hotkey as a fallback
     // toggle mechanism. The LL hook can fail when our own window has focus
     // (console/GUI subsystem interaction), but RegisterHotKey is reliable.
@@ -228,18 +222,15 @@ fn run(
                     let _ = DestroyWindow(hwnd);
                     None
                 } else {
-                    eprintln!("[spud] RegisterHotKey active for toggle");
                     Some(hwnd)
                 }
             }
             Err(_) => {
-                eprintln!("[spud] Failed to create message-only window for hotkey");
                 None
             }
         }
     };
 
-    eprintln!("[spud] Message pump starting");
     let mut msg: MSG = unsafe { std::mem::zeroed() };
     loop {
         let ret = unsafe { GetMessageW(&mut msg, None, 0, 0) };
@@ -262,7 +253,6 @@ fn run(
                             let _ = ClipCursor(None);
                         }
                     }
-                    eprintln!("[spud] Hotkey toggled via RegisterHotKey, grabbed={new_grabbed}");
                     send_event(InputEvent::HotkeyToggled { grabbed: new_grabbed });
                 }
             } else {
@@ -272,10 +262,8 @@ fn run(
                 }
             }
         } else if ret.0 == 0 {
-            eprintln!("[spud] Message pump exiting (WM_QUIT)");
             break;
         } else {
-            eprintln!("[spud] Message pump error: GetMessageW failed");
             break;
         }
     }
@@ -305,9 +293,7 @@ fn run_hotkey_only(
     hotkey: &str,
     tx: MpscSender<InputEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    eprintln!("[spud] Windows hotkey monitor starting, hotkey={hotkey}");
     let (hotkey_vk, hotkey_mods) = parse_hotkey(hotkey)?;
-    eprintln!("[spud] Parsed hotkey: vk=0x{hotkey_vk:04X}, mods={hotkey_mods:04b}");
     set_hotkey_vk(hotkey_vk);
     set_hotkey_mods(hotkey_mods);
     set_tx(tx);
@@ -351,7 +337,6 @@ fn run_hotkey_only(
                     let _ = DestroyWindow(hwnd);
                     None
                 } else {
-                    eprintln!("[spud] RegisterHotKey active");
                     Some(hwnd)
                 }
             }
@@ -370,7 +355,6 @@ fn run_hotkey_only(
                 if can_toggle() {
                     let new_grabbed = !is_grabbed();
                     set_grabbed(new_grabbed);
-                    eprintln!("[spud] Hotkey toggled via RegisterHotKey, grabbed={new_grabbed}");
                     send_event(InputEvent::HotkeyToggled { grabbed: new_grabbed });
                 }
             } else {
@@ -402,9 +386,6 @@ unsafe extern "system" fn keyboard_hook_proc(
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
-    if FIRST_KBD_HOOK.swap(false, Ordering::Relaxed) {
-        eprintln!("[spud] First keyboard hook event received");
-    }
     if n_code < 0 {
         return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
     }
@@ -419,7 +400,6 @@ unsafe extern "system" fn keyboard_hook_proc(
     if down {
         let is_repeat = !PRESSED_KEYS.with(|p| p.borrow_mut().insert(vk));
         if is_repeat && !is_grabbed() {
-            eprintln!("[spud-winhook] repeat vk=0x{vk:04X} fwd (not grabbed)");
             return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
         }
 
@@ -446,7 +426,6 @@ unsafe extern "system" fn keyboard_hook_proc(
                         }
                     }
 
-                    eprintln!("[spud-winhook] HOTKEY grabbed={new_grabbed}");
                     send_event(InputEvent::HotkeyToggled { grabbed: new_grabbed });
                 }
                 return LRESULT(1); // Consume the hotkey event.
@@ -454,7 +433,6 @@ unsafe extern "system" fn keyboard_hook_proc(
         }
 
         if !is_grabbed() {
-            eprintln!("[spud-winhook] down vk=0x{vk:04X} fwd (not grabbed)");
             return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
         }
 
@@ -462,30 +440,21 @@ unsafe extern "system" fn keyboard_hook_proc(
         // Skip auto-repeat keydowns.
         if !is_repeat {
             if let Some(evdev) = windows_vk_to_evdev(vk) {
-                eprintln!("[spud-winhook] down vk=0x{vk:04X} evdev={evdev} SEND");
                 let event = InputEvent::KeyPress { keycode: evdev as u8 };
                 send_event(event);
-            } else {
-                eprintln!("[spud-winhook] down vk=0x{vk:04X} no-evdev DROP");
             }
-        } else {
-            eprintln!("[spud-winhook] repeat vk=0x{vk:04X} DROP (grabbed)");
         }
     } else {
         PRESSED_KEYS.with(|p| { p.borrow_mut().remove(&vk); });
 
         if !is_grabbed() {
-            eprintln!("[spud-winhook] up vk=0x{vk:04X} fwd (not grabbed)");
             return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
         }
 
         // While grabbed, translate and consume keyboard events.
         if let Some(evdev) = windows_vk_to_evdev(vk) {
-            eprintln!("[spud-winhook] up vk=0x{vk:04X} evdev={evdev} SEND");
             let event = InputEvent::KeyRelease { keycode: evdev as u8 };
             send_event(event);
-        } else {
-            eprintln!("[spud-winhook] up vk=0x{vk:04X} no-evdev DROP");
         }
     }
 
@@ -497,9 +466,6 @@ unsafe extern "system" fn mouse_hook_proc(
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
-    if FIRST_MOUSE_HOOK.swap(false, Ordering::Relaxed) {
-        eprintln!("[spud] First mouse hook event received");
-    }
     if n_code < 0 {
         return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
     }

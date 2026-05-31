@@ -479,7 +479,6 @@ async fn run_server(
                                                         inj.move_abs(px, py);
                                                     }
                                                     crate::net::Event::MouseMove { dx, dy } => {
-                                                        println!("[server] MouseMove dx={dx} dy={dy} window_mode={}", session.window_mode);
                                                         inj.move_rel(i32::from(*dx), i32::from(*dy));
                                                     }
                                                     crate::net::Event::Keepalive => {}

@@ -126,7 +126,6 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
                             break;
                         }
                     } else if grabbed {
-                        eprintln!("[spud-x11] KeyPress keycode={} mods={:x}", kp.detail, mods);
                         if output
                             .try_send(InputEvent::KeyPress { keycode: kp.detail })
                             .is_err()
@@ -148,12 +147,8 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
                         _ => false,
                     };
 
-                    if is_autorepeat {
-                        // This is an X11 auto-repeat pair - suppress both events
-                        eprintln!("[spud-x11] KeyRelease+KeyPress keycode={} suppressed (auto-repeat)", kr.detail);
-                    } else {
+                    if !is_autorepeat {
                         // Real key release - send it
-                        eprintln!("[spud-x11] KeyRelease keycode={}", kr.detail);
                         if output
                             .try_send(InputEvent::KeyRelease { keycode: kr.detail })
                             .is_err()

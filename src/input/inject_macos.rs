@@ -105,21 +105,15 @@ impl InputInjector {
                                 post_mouse_relative(&hid, dx, dy, &pressed_buttons);
                             }
                             InjectCmd::KeyDown { code } => {
-                                let was_held = held_keys.contains_key(&code);
-                                eprintln!("[macos-inj] KeyDown evdev={code} held_keys={:?} was_held={was_held}", held_keys.keys().collect::<Vec<_>>());
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
                                     // Check if this is a Super+Space combo (input source switch on macOS)
                                     let has_super = held_keys.keys().any(|k| *k == 125 || *k == 126);
                                     if has_super && code == 57 {
-                                        eprintln!("[macos-inj] WARNING: Super+Space detected! This triggers macOS input source switching.");
                                         space_during_super = true;
                                     }
                                     // Also track if Super is pressed while Space is already held
-                                    if code == 125 || code == 126 {
-                                        if held_keys.contains_key(&57) {
-                                            eprintln!("[macos-inj] WARNING: Super pressed while Space held! This triggers macOS input source switching.");
-                                            space_during_super = true;
-                                        }
+                                    if (code == 125 || code == 126) && held_keys.contains_key(&57) {
+                                        space_during_super = true;
                                     }
                                     held_keys.insert(code, Instant::now() + REPEAT_INITIAL_DELAY);
                                     if let Ok(event) =
@@ -133,7 +127,6 @@ impl InputInjector {
                             }
                             InjectCmd::KeyUp { code } => {
                                 let was_held = held_keys.contains_key(&code);
-                                eprintln!("[macos-inj] KeyUp evdev={code} held_keys={:?} was_held={was_held}", held_keys.keys().collect::<Vec<_>>());
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
                                     held_keys.remove(&code);
                                     if let Ok(event) =
@@ -143,14 +136,13 @@ impl InputInjector {
                                     }
                                     // Log if key was not actually held (orphan up)
                                     if !was_held {
-                                        eprintln!("[macos-inj] WARNING: KeyUp for evdev={code} that was NOT in held_keys (orphan up)");
+                                        eprintln!("[macos-inj] key_up({code}) SKIPPED orphan");
                                     }
 
                                     // If this is a Super key release and Space was pressed during Super,
                                     // inject a synthetic Space KeyUp to prevent "stuck" state.
                                     // macOS input source switching may consume the Space KeyUp.
                                     if (code == 125 || code == 126) && space_during_super {
-                                        eprintln!("[macos-inj] Injecting synthetic Space KeyUp after Super release (input source switch workaround)");
                                         if let Some(space_keycode) = macos_keycodes::evdev_to_macos(57) {
                                             if let Ok(up) =
                                                 CGEvent::new_keyboard_event(cg_source.clone(), space_keycode, false)
