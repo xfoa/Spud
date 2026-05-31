@@ -391,6 +391,7 @@ async fn run_server(
                                         };
                                         if let Some(s) = seq {
                                             if s != 0 && session.key_history.contains(s) {
+                                                eprintln!("[server-dedup] {src}: {event:?} seq={s} DUPLICATE");
                                                 continue; // duplicate
                                             }
                                             if s != 0 {
@@ -411,10 +412,10 @@ async fn run_server(
 
                                         let actions = session.tracker.handle_event(event);
                                         if actions.is_empty() {
-                                            println!("[server] {src}: {event:?}");
+                                            eprintln!("[server-tracker] {src}: {event:?} -> no action");
                                         } else {
                                             for action in &actions {
-                                                println!("[server] {src}: {action}");
+                                                eprintln!("[server-tracker] {src}: {event:?} -> {action}");
                                             }
                                         }
                                         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]

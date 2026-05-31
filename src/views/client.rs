@@ -566,6 +566,7 @@ impl State {
                     self.grabbed = grabbed;
                     self.user_capturing = grabbed;
                     if !grabbed {
+                        eprintln!("[client] HotkeyEvent -> release_all_held (ungrab)");
                         self.release_all_held();
                     }
                     return;
@@ -697,8 +698,10 @@ impl State {
     }
 
     fn release_all_held(&mut self) {
+        eprintln!("[client-release] releasing {} keys {:?} and {} buttons {:?}", self.pressed_keys.len(), self.pressed_keys, self.pressed_mouse_buttons.len(), self.pressed_mouse_buttons);
         if let Some(sender) = &self.sender {
             for name in &self.pressed_keys {
+                eprintln!("[client-release] send KeyUp({name})");
                 sender.send(&crate::net::Event::KeyUp(name.clone(), 0));
             }
             for button in &self.pressed_mouse_buttons {
@@ -1811,10 +1814,13 @@ fn input_event_to_wire(
             let code = crate::input::macos_keycodes::macos_to_evdev(*keycode as u16).unwrap_or(0);
             #[cfg(not(any(target_os = "linux", target_os = "macos")))]
             let code = *keycode as u16;
+            eprintln!("[client-wire] KeyPress raw={keycode} evdev={code} pressed_keys={pressed_keys:?}");
             if code == 0 {
                 return None;
             }
-            if pressed_keys.insert(code) {
+            let inserted = pressed_keys.insert(code);
+            eprintln!("[client-wire]   -> insert={inserted} keys_after={pressed_keys:?}");
+            if inserted {
                 Some(crate::net::Event::KeyDown(code, 0))
             } else {
                 None
@@ -1827,6 +1833,7 @@ fn input_event_to_wire(
             let code = crate::input::macos_keycodes::macos_to_evdev(*keycode as u16).unwrap_or(0);
             #[cfg(not(any(target_os = "linux", target_os = "macos")))]
             let code = *keycode as u16;
+            eprintln!("[client-wire] KeyRelease raw={keycode} evdev={code} pressed_keys={pressed_keys:?}");
             if code == 0 {
                 return None;
             }
