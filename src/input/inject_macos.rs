@@ -44,11 +44,15 @@ impl InputInjector {
         let (tx, rx) = mpsc::channel::<InjectCmd>();
 
         let handle = thread::spawn(move || {
+            eprintln!("[spud-inject] injector thread started");
             // Mouse goes through IOKit HID so raw-input games see it.
             let hid = match IoKitHid::open() {
-                Some(h) => h,
+                Some(h) => {
+                    eprintln!("[spud-inject] IOKit HID connection opened successfully");
+                    h
+                }
                 None => {
-                    eprintln!("[spud] Failed to open IOKit HID connection");
+                    eprintln!("[spud-inject] FAILED to open IOKit HID connection (IOServiceGetMatchingService/IOServiceOpen failed)");
                     return;
                 }
             };
@@ -59,13 +63,19 @@ impl InputInjector {
             // Parsec intercepts. Private state events bypass taps, ensuring our
             // injected events reach target applications.
             let cg_source = match CGEventSource::new(CGEventSourceStateID::Private) {
-                Ok(s) => s,
+                Ok(s) => {
+                    eprintln!("[spud-inject] CGEventSource (Private) created successfully");
+                    s
+                }
                 Err(_) => {
-                    eprintln!("[spud] Failed to create CGEventSource (Private), falling back to HIDSystemState");
+                    eprintln!("[spud-inject] FAILED to create CGEventSource (Private), falling back to HIDSystemState");
                     match CGEventSource::new(CGEventSourceStateID::HIDSystemState) {
-                        Ok(s) => s,
+                        Ok(s) => {
+                            eprintln!("[spud-inject] CGEventSource (HIDSystemState) created successfully (fallback)");
+                            s
+                        }
                         Err(_) => {
-                            eprintln!("[spud] Failed to create CGEventSource (HIDSystemState)");
+                            eprintln!("[spud-inject] FAILED to create CGEventSource (HIDSystemState)");
                             return;
                         }
                     }
@@ -87,9 +97,11 @@ impl InputInjector {
             // the target application from seeing Space as "stuck".
             let mut space_during_super: bool = false;
 
+            eprintln!("[spud-inject] entering command loop");
             loop {
                 match rx.recv_timeout(REPEAT_INTERVAL) {
                     Ok(cmd) => {
+                        eprintln!("[spud-inject] received command: {:?}", cmd);
                         match cmd {
                             InjectCmd::MouseAbs { x, y } => {
                                 cursor = CGPoint::new(f64::from(x), f64::from(y));

@@ -77,12 +77,14 @@ impl ServerListener {
         }
         #[cfg(target_os = "macos")]
         {
+            eprintln!("[spud] macOS: attempting to create input injector (screen {}x{})", screen_width, screen_height);
             match crate::input::InputInjector::new(screen_width, screen_height) {
                 Ok(inj) => {
+                    eprintln!("[spud] macOS: input injector created OK");
                     let _ = injector.set(inj);
                 }
                 Err(e) => {
-                    eprintln!("[spud] Failed to create macOS input injector: {e}");
+                    eprintln!("[spud] macOS: FAILED to create input injector: {e}");
                 }
             }
         }
