@@ -430,7 +430,8 @@ impl IoKitHid {
                 x: cursor.x as i16,
                 y: cursor.y as i16,
             };
-            IOHIDPostEvent(self.connect, event_type, point, &data, K_NX_EVENT_DATA_VERSION, 0, options);
+            let kr = IOHIDPostEvent(self.connect, event_type, point, &data, K_NX_EVENT_DATA_VERSION, 0, options);
+            debug_log(&format!("[spud-inject] IOHIDPostEvent(type={event_type}, opts={options}) -> kr={kr}"));
         }
     }
 
@@ -454,7 +455,7 @@ impl IoKitHid {
                 x: dx as i16,
                 y: dy as i16,
             };
-            IOHIDPostEvent(
+            let kr = IOHIDPostEvent(
                 self.connect,
                 event_type,
                 point,
@@ -463,6 +464,7 @@ impl IoKitHid {
                 0,
                 K_IOHID_SET_RELATIVE_CURSOR_POSITION,
             );
+            debug_log(&format!("[spud-inject] IOHIDPostEvent(relative, type={event_type}) -> kr={kr}"));
         }
     }
 
@@ -485,7 +487,8 @@ impl IoKitHid {
                 x: cursor.x as i16,
                 y: cursor.y as i16,
             };
-            IOHIDPostEvent(self.connect, event_type, point, &data, K_NX_EVENT_DATA_VERSION, 0, 0);
+            let kr = IOHIDPostEvent(self.connect, event_type, point, &data, K_NX_EVENT_DATA_VERSION, 0, 0);
+            debug_log(&format!("[spud-inject] IOHIDPostEvent(button, type={event_type}, btn={button}) -> kr={kr}"));
         }
     }
 
