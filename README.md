@@ -123,6 +123,24 @@ cargo bundle --format osx --release
 cargo bundle --format msi --release
 ```
 
+## Troubleshooting
+
+### Spud doesn't receive input after reinstalling or building from source on macOS
+
+There are two likely causes:
+
+1. The `com.apple.quarantine` xattr is set.
+This triggers App Translocation, which changes Spud's code signature each time it's run, which in-turn invalidates its security grants.
+Remove this xattr with this terminal command:
+
+```
+xattr -d com.apple.quarantine /Applications/Spud.app
+```
+
+2. The TCC code signature hash for the Accessibility permission is out of date.
+Remove Spud from `Settings -> Privacy & Security -> Accessibility` then re-add it.
+
+
 ## Screenshots
 
 ### Client
