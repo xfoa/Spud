@@ -124,7 +124,6 @@ impl InputInjector {
                                 }
                             }
                             InjectCmd::KeyUp { code } => {
-                                let was_held = held_keys.contains_key(&code);
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
                                     held_keys.remove(&code);
                                     if let Ok(event) =
