@@ -298,9 +298,6 @@ async fn run_server(
             _ = sweep_interval.tick() => {
                 for mut session in sessions.iter_mut() {
                     let actions = session.tracker.sweep();
-                    for action in &actions {
-                        println!("[server] (timeout): {action}");
-                    }
                     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
                     if let Some(inj) = injector.get() {
                         for action in &actions {
@@ -420,14 +417,7 @@ async fn run_server(
                                             _ => None,
                                         };
 
-                                        let actions = session.tracker.handle_event(event);
-                                        if actions.is_empty() {
-                                            eprintln!("[server-tracker] {src}: {event:?} -> no action");
-                                        } else {
-                                            for action in &actions {
-                                                eprintln!("[server-tracker] {src}: {event:?} -> {action}");
-                                            }
-                                        }
+                                        let _actions = session.tracker.handle_event(event);
                                         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
                                         if let Some(inj) = injector.get() {
                                             if !is_localhost {
@@ -443,30 +433,22 @@ async fn run_server(
                                                 }
                                                 match event {
                                                     crate::net::Event::KeyDown(code, _) => {
-                                                        eprintln!("[server-inj] key_down({code})");
                                                         inj.key_down(*code);
                                                     }
                                                     crate::net::Event::KeyUp(code, _) => {
                                                         if key_was_down == Some(true) {
-                                                            eprintln!("[server-inj] key_up({code})");
                                                             inj.key_up(*code);
-                                                        } else {
-                                                            eprintln!("[server-inj] key_up({code}) SKIPPED orphan");
                                                         }
                                                     }
                                                     crate::net::Event::KeyRepeat(_, _) => {
                                                         // Heartbeat - tracker already updated, no injection needed
                                                     }
                                                     crate::net::Event::MouseButton { button, pressed: true } => {
-                                                        eprintln!("[server-inj] button_down({button})");
                                                         inj.button_down(wire_to_platform_button(*button));
                                                     }
                                                     crate::net::Event::MouseButton { button, pressed: false } => {
                                                         if button_was_down == Some(true) {
-                                                            eprintln!("[server-inj] button_up({button})");
                                                             inj.button_up(wire_to_platform_button(*button));
-                                                        } else {
-                                                            eprintln!("[server-inj] button_up({button}) SKIPPED orphan");
                                                         }
                                                     }
                                                     crate::net::Event::MouseButtonRepeat(_) => {}

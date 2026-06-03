@@ -121,8 +121,6 @@ impl InputInjector {
                                     {
                                         event.post(CGEventTapLocation::HID);
                                     }
-                                } else {
-                                    eprintln!("[macos-inj] No macOS keycode for evdev {code}");
                                 }
                             }
                             InjectCmd::KeyUp { code } => {
@@ -134,11 +132,6 @@ impl InputInjector {
                                     {
                                         event.post(CGEventTapLocation::HID);
                                     }
-                                    // Log if key was not actually held (orphan up)
-                                    if !was_held {
-                                        eprintln!("[macos-inj] key_up({code}) SKIPPED orphan");
-                                    }
-
                                     // If this is a Super key release and Space was pressed during Super,
                                     // inject a synthetic Space KeyUp to prevent "stuck" state.
                                     // macOS input source switching may consume the Space KeyUp.
@@ -152,8 +145,6 @@ impl InputInjector {
                                         }
                                         space_during_super = false;
                                     }
-                                } else {
-                                    eprintln!("[macos-inj] No macOS keycode for evdev {code}");
                                 }
                             }
                             InjectCmd::ButtonDown { code } => {

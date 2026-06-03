@@ -113,7 +113,6 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
                     let mods = u16::from(kp.state) & RELEVANT_MODS;
                     if kp.detail == keycode && mods == modifiers {
                         grabbed = !grabbed;
-                        eprintln!("[spud-x11] hotkey toggled grabbed={grabbed}");
                         if grabbed {
                             grab_input(&conn, root, &mut pointer)?;
                         } else {

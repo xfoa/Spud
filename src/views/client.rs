@@ -488,9 +488,6 @@ impl State {
                 }
             }
             Message::Capture(event) => {
-                if matches!(event, iced::Event::Mouse(iced::mouse::Event::CursorMoved { .. })) {
-                    println!("[client] Capture CursorMoved");
-                }
                 if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
                     key,
                     modifiers,
@@ -499,7 +496,6 @@ impl State {
                 {
                     if format_chord(key, *modifiers).as_deref() == Some(self.hotkey.as_str())
                     {
-                        eprintln!("[client] Capture: hotkey detected, mode={:?}, wayland_mode={}", self.capture_mode, self.wayland_mode);
                         if self.capture_mode == CaptureMode::Fullscreen && self.wayland_mode {
                             let new_grab = crate::input::toggle_wayland_grab();
                             self.user_capturing = new_grab;
@@ -551,9 +547,6 @@ impl State {
                         is_window_mode,
                         self.natural_scroll,
                     ) {
-                        if matches!(wire, crate::net::Event::MouseMove { .. } | crate::net::Event::MouseAbs { .. }) {
-                            println!("[client] send {:?}", wire);
-                        }
                         if let Some(sender) = &self.sender {
                             sender.send(&wire);
                         }
@@ -562,17 +555,12 @@ impl State {
             }
             Message::HotkeyEvent(event) => {
                 if let crate::input::InputEvent::HotkeyToggled { grabbed } = event {
-                    eprintln!("[client] HotkeyEvent: HotkeyToggled grabbed={grabbed}");
                     self.grabbed = grabbed;
                     self.user_capturing = grabbed;
                     if !grabbed {
-                        eprintln!("[client] HotkeyEvent -> release_all_held (ungrab)");
                         self.release_all_held();
                     }
                     return;
-                }
-                if let crate::input::InputEvent::BackendError(ref msg) = event {
-                    eprintln!("[client] input backend error: {msg}");
                 }
                 if let Some(wire) = input_event_to_wire(&event, &mut self.pressed_keys, &mut self.pressed_mouse_buttons, self.sensitivity, self.natural_scroll) {
                     if let Some(sender) = &self.sender {
@@ -698,10 +686,8 @@ impl State {
     }
 
     fn release_all_held(&mut self) {
-        eprintln!("[client-release] releasing {} keys {:?} and {} buttons {:?}", self.pressed_keys.len(), self.pressed_keys, self.pressed_mouse_buttons.len(), self.pressed_mouse_buttons);
         if let Some(sender) = &self.sender {
             for name in &self.pressed_keys {
-                eprintln!("[client-release] send KeyUp({name})");
                 sender.send(&crate::net::Event::KeyUp(name.clone(), 0));
             }
             for button in &self.pressed_mouse_buttons {
@@ -1727,7 +1713,6 @@ fn iced_to_wire(
             let code = physical_key_to_evdev(physical_key)
                 .or_else(|| key_to_evdev(key))?;
             let inserted = pressed_keys.insert(code);
-            eprintln!("[client-iced] KeyPressed code={code} insert={inserted} keys={pressed_keys:?}");
             if inserted {
                 Some(crate::net::Event::KeyDown(code, 0))
             } else {
@@ -1738,7 +1723,6 @@ fn iced_to_wire(
             let code = physical_key_to_evdev(physical_key)
                 .or_else(|| key_to_evdev(key))?;
             pressed_keys.remove(&code);
-            eprintln!("[client-iced] KeyReleased code={code} keys={pressed_keys:?}");
             Some(crate::net::Event::KeyUp(code, 0))
         }
         iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
@@ -1759,9 +1743,6 @@ fn iced_to_wire(
                     let dy = ((position.y - prev.y) * scale.1).round() as i16;
                     crate::net::Event::MouseMove { dx, dy }
                 });
-                if last_cursor.is_none() {
-                    println!("[client] CursorMoved: last_cursor is None, no delta computed");
-                }
                 *last_cursor = Some(*position);
                 result.filter(|e| !matches!(e, crate::net::Event::MouseMove { dx: 0, dy: 0 }))
             }
@@ -1817,12 +1798,10 @@ fn input_event_to_wire(
             let code = crate::input::macos_keycodes::macos_to_evdev(*keycode as u16).unwrap_or(0);
             #[cfg(not(any(target_os = "linux", target_os = "macos")))]
             let code = *keycode as u16;
-            eprintln!("[client-wire] KeyPress raw={keycode} evdev={code} pressed_keys={pressed_keys:?}");
             if code == 0 {
                 return None;
             }
             let inserted = pressed_keys.insert(code);
-            eprintln!("[client-wire]   -> insert={inserted} keys_after={pressed_keys:?}");
             if inserted {
                 Some(crate::net::Event::KeyDown(code, 0))
             } else {
@@ -1836,7 +1815,6 @@ fn input_event_to_wire(
             let code = crate::input::macos_keycodes::macos_to_evdev(*keycode as u16).unwrap_or(0);
             #[cfg(not(any(target_os = "linux", target_os = "macos")))]
             let code = *keycode as u16;
-            eprintln!("[client-wire] KeyRelease raw={keycode} evdev={code} pressed_keys={pressed_keys:?}");
             if code == 0 {
                 return None;
             }
