@@ -1,9 +1,21 @@
 use std::collections::{HashMap, HashSet};
-use std::io;
+use std::fs::OpenOptions;
+use std::io::{self, Write};
 use std::os::raw::{c_char, c_int, c_void};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender as MpscSender};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
+
+/// Debug log that writes to a file so it works for both terminal and GUI launches.
+fn debug_log(msg: &str) {
+    if let Ok(mut f) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/spud-inject.log")
+    {
+        let _ = writeln!(f, "{}", msg);
+    }
+}
 
 use core_graphics::display::CGDisplay;
 use core_graphics::event::{
@@ -44,15 +56,15 @@ impl InputInjector {
         let (tx, rx) = mpsc::channel::<InjectCmd>();
 
         let handle = thread::spawn(move || {
-            eprintln!("[spud-inject] injector thread started");
+            debug_log("[spud-inject] injector thread started");
             // Mouse goes through IOKit HID so raw-input games see it.
             let hid = match IoKitHid::open() {
                 Some(h) => {
-                    eprintln!("[spud-inject] IOKit HID connection opened successfully");
+                    debug_log("[spud-inject] IOKit HID connection opened successfully");
                     h
                 }
                 None => {
-                    eprintln!("[spud-inject] FAILED to open IOKit HID connection (IOServiceGetMatchingService/IOServiceOpen failed)");
+                    debug_log("[spud-inject] FAILED to open IOKit HID connection (IOServiceGetMatchingService/IOServiceOpen failed)");
                     return;
                 }
             };
@@ -64,18 +76,18 @@ impl InputInjector {
             // injected events reach target applications.
             let cg_source = match CGEventSource::new(CGEventSourceStateID::Private) {
                 Ok(s) => {
-                    eprintln!("[spud-inject] CGEventSource (Private) created successfully");
+                    debug_log("[spud-inject] CGEventSource (Private) created successfully");
                     s
                 }
                 Err(_) => {
-                    eprintln!("[spud-inject] FAILED to create CGEventSource (Private), falling back to HIDSystemState");
+                    debug_log("[spud-inject] FAILED to create CGEventSource (Private), falling back to HIDSystemState");
                     match CGEventSource::new(CGEventSourceStateID::HIDSystemState) {
                         Ok(s) => {
-                            eprintln!("[spud-inject] CGEventSource (HIDSystemState) created successfully (fallback)");
+                            debug_log("[spud-inject] CGEventSource (HIDSystemState) created successfully (fallback)");
                             s
                         }
                         Err(_) => {
-                            eprintln!("[spud-inject] FAILED to create CGEventSource (HIDSystemState)");
+                            debug_log("[spud-inject] FAILED to create CGEventSource (HIDSystemState)");
                             return;
                         }
                     }
@@ -97,11 +109,11 @@ impl InputInjector {
             // the target application from seeing Space as "stuck".
             let mut space_during_super: bool = false;
 
-            eprintln!("[spud-inject] entering command loop");
+            debug_log("[spud-inject] entering command loop");
             loop {
                 match rx.recv_timeout(REPEAT_INTERVAL) {
                     Ok(cmd) => {
-                        eprintln!("[spud-inject] received command: {:?}", cmd);
+                        debug_log(&format!("[spud-inject] received command: {:?}", cmd));
                         match cmd {
                             InjectCmd::MouseAbs { x, y } => {
                                 cursor = CGPoint::new(f64::from(x), f64::from(y));

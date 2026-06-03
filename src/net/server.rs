@@ -77,14 +77,20 @@ impl ServerListener {
         }
         #[cfg(target_os = "macos")]
         {
-            eprintln!("[spud] macOS: attempting to create input injector (screen {}x{})", screen_width, screen_height);
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/spud-inject.log") {
+                let _ = std::io::Write::write_fmt(&mut f, format_args!("[spud] macOS: attempting to create input injector (screen {}x{})\n", screen_width, screen_height));
+            }
             match crate::input::InputInjector::new(screen_width, screen_height) {
                 Ok(inj) => {
-                    eprintln!("[spud] macOS: input injector created OK");
+                    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/spud-inject.log") {
+                        let _ = std::io::Write::write_fmt(&mut f, format_args!("[spud] macOS: input injector created OK\n"));
+                    }
                     let _ = injector.set(inj);
                 }
                 Err(e) => {
-                    eprintln!("[spud] macOS: FAILED to create input injector: {e}");
+                    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/spud-inject.log") {
+                        let _ = std::io::Write::write_fmt(&mut f, format_args!("[spud] macOS: FAILED to create input injector: {e}\n"));
+                    }
                 }
             }
         }
