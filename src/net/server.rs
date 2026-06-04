@@ -286,8 +286,12 @@ async fn run_server(
                         let sessions = sessions.clone();
                         let hash = passphrase_hash.clone();
                         let child_cancel = cancel.child_token();
+                        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+                        let inj = injector.clone();
+                        #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+                        let inj: Option<()> = None;
                         tokio::spawn(handle_client(
-                            stream, peer, acceptor, sessions, require_auth, hash, encrypt_udp, key_timeout_ms, child_cancel, screen_width, screen_height, batch_history_multiplier,
+                            stream, peer, acceptor, sessions, require_auth, hash, encrypt_udp, key_timeout_ms, child_cancel, screen_width, screen_height, batch_history_multiplier, inj,
                         ));
                     }
                     Err(e) => {
@@ -426,10 +430,13 @@ async fn run_server(
                                             _ => None,
                                         };
 
-                                        let _actions = session.tracker.handle_event(event);
+                                        let actions = session.tracker.handle_event(event);
                                         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
                                         if let Some(inj) = injector.get() {
                                             if !is_localhost {
+                                                for action in &actions {
+                                                    inj.inject_action(action);
+                                                }
                                                 if needs_key_down {
                                                     if let crate::net::Event::KeyRepeat(code, _) = event {
                                                         inj.key_down(*code);
@@ -511,6 +518,11 @@ async fn run_server(
     cancel.cancel();
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+type InjectorArc = Arc<OnceLock<crate::input::InputInjector>>;
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+type InjectorArc = ();
+
 async fn handle_client(
     stream: TcpStream,
     peer: SocketAddr,
@@ -524,6 +536,10 @@ async fn handle_client(
     screen_width: u16,
     screen_height: u16,
     batch_history_multiplier: u8,
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    injector: InjectorArc,
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    _injector: InjectorArc,
 ) {
     let tls = match acceptor.accept(stream).await {
         Ok(tls) => tls,
@@ -668,6 +684,15 @@ async fn handle_client(
     }
 
     eprintln!("[server] session removed conn={conn_id}");
+    if let Some(mut session) = sessions.get_mut(&conn_id) {
+        let actions = session.tracker.release_all();
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+        if let Some(inj) = injector.get() {
+            for action in &actions {
+                inj.inject_action(action);
+            }
+        }
+    }
     sessions.remove(&conn_id);
 }
 

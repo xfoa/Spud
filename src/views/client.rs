@@ -336,6 +336,7 @@ impl State {
                 self.last_error = None;
             }
             Message::Disconnect => {
+                self.release_all_held();
                 self.connected = false;
                 self.connecting = false;
                 self.sender = None;
@@ -353,6 +354,7 @@ impl State {
             }
             Message::ConnectionLost => {
                 if self.connected {
+                    self.release_all_held();
                     self.connected = false;
                     self.connecting = false;
                     self.sender = None;

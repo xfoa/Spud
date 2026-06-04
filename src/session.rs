@@ -269,6 +269,20 @@ impl KeyTracker {
         });
         expired
     }
+
+    /// Release all currently held keys and buttons.
+    pub fn release_all(&mut self) -> Vec<String> {
+        let mut actions = Vec::new();
+        for code in self.keys.keys().copied().collect::<Vec<_>>() {
+            actions.push(format!("release {}", evdev_name(code)));
+        }
+        self.keys.clear();
+        for button in self.mouse_buttons.keys().copied().collect::<Vec<_>>() {
+            actions.push(format!("release mouse {button}"));
+        }
+        self.mouse_buttons.clear();
+        actions
+    }
 }
 
 /// Deduplicates mouse events using a 65536-entry bitmap and a circular buffer.
