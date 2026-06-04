@@ -111,6 +111,7 @@ impl InputInjector {
                             }
                             InjectCmd::KeyDown { code } => {
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
+                                    eprintln!("[macos-inj] KeyDown evdev={code} macos={keycode}");
                                     // Check if this is a Super+Space combo (input source switch on macOS)
                                     let has_super = held_keys.contains_key(&125) || held_keys.contains_key(&126);
                                     if has_super && code == 57 {
@@ -126,10 +127,13 @@ impl InputInjector {
                                     {
                                         event.post(CGEventTapLocation::HID);
                                     }
+                                } else {
+                                    eprintln!("[macos-inj] KeyDown evdev={code} -> no mapping");
                                 }
                             }
                             InjectCmd::KeyUp { code } => {
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
+                                    eprintln!("[macos-inj] KeyUp   evdev={code} macos={keycode} held_before={}", held_keys.contains_key(&code));
                                     held_keys.remove(&code);
                                     if let Ok(event) =
                                         CGEvent::new_keyboard_event(cg_source.clone(), keycode, false)
@@ -149,6 +153,8 @@ impl InputInjector {
                                         }
                                         space_during_super = false;
                                     }
+                                } else {
+                                    eprintln!("[macos-inj] KeyUp   evdev={code} -> no mapping");
                                 }
                             }
                             InjectCmd::ButtonDown { code } => {
