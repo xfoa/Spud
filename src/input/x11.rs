@@ -96,124 +96,137 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
     conn.flush()?;
 
     let mut grabbed = false;
+    let mut pending: Option<Event> = None;
 
     loop {
         if output.is_closed() {
             break;
         }
 
-        match conn.wait_for_event()? {
-            event => match event {
-                Event::KeyPress(kp) => {
-                    let mods = u16::from(kp.state) & RELEVANT_MODS;
-                    if kp.detail == keycode && mods == modifiers {
-                        grabbed = !grabbed;
-                        if grabbed {
-                            grab_input(&conn, root, &mut pointer)?;
-                        } else {
-                            ungrab_input(&conn, root)?;
-                        }
-                        if output
-                            .try_send(InputEvent::HotkeyToggled { grabbed })
-                            .is_err()
-                        {
-                            break;
-                        }
-                    } else if grabbed {
-                        if output
-                            .try_send(InputEvent::KeyPress { keycode: kp.detail })
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
-                }
-                Event::KeyRelease(kr) if grabbed => {
-                    // X11 auto-repeat detection: when X11 auto-repeat is enabled, the server
-                    // generates KeyRelease+KeyPress pairs instead of just repeating KeyPress.
-                    // Detect this by checking if a KeyPress with the same keycode immediately
-                    // follows this KeyRelease in the event queue.
-                    let is_autorepeat = match conn.poll_for_event()? {
-                        Some(Event::KeyPress(kp)) => {
-                            let time_diff = kp.time.saturating_sub(kr.time);
-                            kp.detail == kr.detail && time_diff <= AUTOREPEAT_TIME_WINDOW
-                        }
-                        _ => false,
-                    };
+        let event = match pending.take() {
+            Some(e) => e,
+            None => conn.wait_for_event()?,
+        };
 
-                    if !is_autorepeat {
-                        // Real key release - send it
-                        if output
-                            .try_send(InputEvent::KeyRelease { keycode: kr.detail })
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
-                }
-                Event::MotionNotify(mn) if grabbed => {
-                    let is_warp = pointer.pending_warps > 0
-                        && mn.event_x == pointer.center_x
-                        && mn.event_y == pointer.center_y;
-                    if is_warp {
-                        pointer.pending_warps -= 1;
-                        pointer.last_x = pointer.center_x;
-                        pointer.last_y = pointer.center_y;
+        match event {
+            Event::KeyPress(kp) => {
+                let mods = u16::from(kp.state) & RELEVANT_MODS;
+                if kp.detail == keycode && mods == modifiers {
+                    grabbed = !grabbed;
+                    if grabbed {
+                        grab_input(&conn, root, &mut pointer)?;
                     } else {
-                        let dx = mn.event_x - pointer.last_x;
-                        let dy = mn.event_y - pointer.last_y;
-                        pointer.last_x = mn.event_x;
-                        pointer.last_y = mn.event_y;
-                        if dx != 0 || dy != 0 {
-                            if output
-                                .try_send(InputEvent::MouseMove { dx, dy })
-                                .is_err()
-                            {
-                                break;
-                            }
-                        }
-                        let dist_x = (mn.event_x - pointer.center_x).abs();
-                        let dist_y = (mn.event_y - pointer.center_y).abs();
-                        if dist_x > pointer.edge_x || dist_y > pointer.edge_y {
-                            warp_to_center(&conn, root, &mut pointer)?;
-                        }
-                    }
-                }
-                Event::ButtonPress(bp) if grabbed => {
-                    let event = match bp.detail {
-                        4 => Some(InputEvent::Wheel { dx: 0, dy: -1 }),
-                        5 => Some(InputEvent::Wheel { dx: 0, dy: 1 }),
-                        6 => Some(InputEvent::Wheel { dx: -1, dy: 0 }),
-                        7 => Some(InputEvent::Wheel { dx: 1, dy: 0 }),
-                        b => Some(InputEvent::MouseButton {
-                            button: b,
-                            pressed: true,
-                        }),
-                    };
-                    if let Some(ev) = event {
-                        if output.try_send(ev).is_err() {
-                            break;
-                        }
-                    }
-                }
-                Event::ButtonRelease(br) if grabbed => {
-                    // Scroll wheel buttons (4-7) are handled as Wheel events
-                    // on press; ignore their release.
-                    if br.detail >= 4 && br.detail <= 7 {
-                        continue;
+                        ungrab_input(&conn, root)?;
                     }
                     if output
-                        .try_send(InputEvent::MouseButton {
-                            button: br.detail,
-                            pressed: false,
-                        })
+                        .try_send(InputEvent::HotkeyToggled { grabbed })
+                        .is_err()
+                    {
+                        break;
+                    }
+                } else if grabbed {
+                    if output
+                        .try_send(InputEvent::KeyPress { keycode: kp.detail })
                         .is_err()
                     {
                         break;
                     }
                 }
-                _ => {}
             }
+            Event::KeyRelease(kr) if grabbed => {
+                // X11 auto-repeat detection: when X11 auto-repeat is enabled, the server
+                // generates KeyRelease+KeyPress pairs instead of just repeating KeyPress.
+                // Detect this by checking if a KeyPress with the same keycode immediately
+                // follows this KeyRelease in the event queue.
+                let is_autorepeat = match conn.poll_for_event()? {
+                    Some(Event::KeyPress(kp)) => {
+                        let time_diff = kp.time.saturating_sub(kr.time);
+                        if kp.detail == kr.detail && time_diff <= AUTOREPEAT_TIME_WINDOW {
+                            true
+                        } else {
+                            pending = Some(Event::KeyPress(kp));
+                            false
+                        }
+                    }
+                    Some(other) => {
+                        pending = Some(other);
+                        false
+                    }
+                    None => false,
+                };
+
+                if !is_autorepeat {
+                    // Real key release - send it
+                    if output
+                        .try_send(InputEvent::KeyRelease { keycode: kr.detail })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            }
+            Event::MotionNotify(mn) if grabbed => {
+                let is_warp = pointer.pending_warps > 0
+                    && mn.event_x == pointer.center_x
+                    && mn.event_y == pointer.center_y;
+                if is_warp {
+                    pointer.pending_warps -= 1;
+                    pointer.last_x = pointer.center_x;
+                    pointer.last_y = pointer.center_y;
+                } else {
+                    let dx = mn.event_x - pointer.last_x;
+                    let dy = mn.event_y - pointer.last_y;
+                    pointer.last_x = mn.event_x;
+                    pointer.last_y = mn.event_y;
+                    if dx != 0 || dy != 0 {
+                        if output
+                            .try_send(InputEvent::MouseMove { dx, dy })
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    let dist_x = (mn.event_x - pointer.center_x).abs();
+                    let dist_y = (mn.event_y - pointer.center_y).abs();
+                    if dist_x > pointer.edge_x || dist_y > pointer.edge_y {
+                        warp_to_center(&conn, root, &mut pointer)?;
+                    }
+                }
+            }
+            Event::ButtonPress(bp) if grabbed => {
+                let event = match bp.detail {
+                    4 => Some(InputEvent::Wheel { dx: 0, dy: -1 }),
+                    5 => Some(InputEvent::Wheel { dx: 0, dy: 1 }),
+                    6 => Some(InputEvent::Wheel { dx: -1, dy: 0 }),
+                    7 => Some(InputEvent::Wheel { dx: 1, dy: 0 }),
+                    b => Some(InputEvent::MouseButton {
+                        button: b,
+                        pressed: true,
+                    }),
+                };
+                if let Some(ev) = event {
+                    if output.try_send(ev).is_err() {
+                        break;
+                    }
+                }
+            }
+            Event::ButtonRelease(br) if grabbed => {
+                // Scroll wheel buttons (4-7) are handled as Wheel events
+                // on press; ignore their release.
+                if br.detail >= 4 && br.detail <= 7 {
+                    continue;
+                }
+                if output
+                    .try_send(InputEvent::MouseButton {
+                        button: br.detail,
+                        pressed: false,
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            _ => {}
         }
     }
 
