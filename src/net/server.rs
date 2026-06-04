@@ -434,8 +434,13 @@ async fn run_server(
                                         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
                                         if let Some(inj) = injector.get() {
                                             if !is_localhost {
+                                                // Inject only synthetic tracker actions
+                                                // (lost-up / timeout releases). Regular press/release
+                                                // events are handled by the direct match below.
                                                 for action in &actions {
-                                                    inj.inject_action(action);
+                                                    if action.contains("(lost up)") || action.contains("(timeout)") {
+                                                        inj.inject_action(action);
+                                                    }
                                                 }
                                                 if needs_key_down {
                                                     if let crate::net::Event::KeyRepeat(code, _) = event {
