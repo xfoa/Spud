@@ -260,27 +260,22 @@ pub fn emit_key(dev: &mut evdev::uinput::VirtualDevice, code: u16, value: i32) -
 
 pub fn emit_wheel(dev: &mut evdev::uinput::VirtualDevice, dx: i8, dy: i8) -> io::Result<()> {
     use evdev::{EventType, InputEvent, RelativeAxisCode, SynchronizationCode};
-    let mut events = Vec::with_capacity(3);
-    if dy != 0 {
-        events.push(InputEvent::new_now(
-            EventType::RELATIVE.0,
-            RelativeAxisCode::REL_WHEEL.0,
-            i32::from(dy),
-        ));
+    match (dx != 0, dy != 0) {
+        (true, true) => dev.emit(&[
+            InputEvent::new_now(EventType::RELATIVE.0, RelativeAxisCode::REL_WHEEL.0, i32::from(dy)),
+            InputEvent::new_now(EventType::RELATIVE.0, RelativeAxisCode::REL_HWHEEL.0, i32::from(dx)),
+            InputEvent::new_now(EventType::SYNCHRONIZATION.0, SynchronizationCode::SYN_REPORT.0, 0),
+        ]),
+        (true, false) => dev.emit(&[
+            InputEvent::new_now(EventType::RELATIVE.0, RelativeAxisCode::REL_HWHEEL.0, i32::from(dx)),
+            InputEvent::new_now(EventType::SYNCHRONIZATION.0, SynchronizationCode::SYN_REPORT.0, 0),
+        ]),
+        (false, true) => dev.emit(&[
+            InputEvent::new_now(EventType::RELATIVE.0, RelativeAxisCode::REL_WHEEL.0, i32::from(dy)),
+            InputEvent::new_now(EventType::SYNCHRONIZATION.0, SynchronizationCode::SYN_REPORT.0, 0),
+        ]),
+        (false, false) => Ok(()),
     }
-    if dx != 0 {
-        events.push(InputEvent::new_now(
-            EventType::RELATIVE.0,
-            RelativeAxisCode::REL_HWHEEL.0,
-            i32::from(dx),
-        ));
-    }
-    events.push(InputEvent::new_now(
-        EventType::SYNCHRONIZATION.0,
-        SynchronizationCode::SYN_REPORT.0,
-        0,
-    ));
-    dev.emit(&events)
 }
 
 

@@ -88,7 +88,12 @@ impl InputInjector {
             let mut space_during_super: bool = false;
 
             loop {
-                match rx.recv_timeout(REPEAT_INTERVAL) {
+                let timeout = if held_keys.is_empty() {
+                    Duration::from_secs(1)
+                } else {
+                    REPEAT_INTERVAL
+                };
+                match rx.recv_timeout(timeout) {
                     Ok(cmd) => {
                         match cmd {
                             InjectCmd::MouseAbs { x, y } => {
@@ -107,7 +112,7 @@ impl InputInjector {
                             InjectCmd::KeyDown { code } => {
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
                                     // Check if this is a Super+Space combo (input source switch on macOS)
-                                    let has_super = held_keys.keys().any(|k| *k == 125 || *k == 126);
+                                    let has_super = held_keys.contains_key(&125) || held_keys.contains_key(&126);
                                     if has_super && code == 57 {
                                         space_during_super = true;
                                     }

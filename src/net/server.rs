@@ -320,31 +320,40 @@ async fn run_server(
                             session.last_activity = std::time::Instant::now();
                             session.src_addr = src;
 
-                            let plaintext: Option<Vec<u8>> = if session.encrypt {
+                            let mut decrypted: Option<Vec<u8>> = None;
+                            let mut decrypt_failed = false;
+
+                            if session.encrypt {
                                 if n >= 16 + 16 {
                                     let seq = u64::from_le_bytes(buf[8..16].try_into().unwrap());
                                     if !session.replay_window.is_valid(seq) {
                                         eprintln!("[spud] UDP replay/duplicate seq {seq} for conn {conn_id}, dropping");
-                                        None
                                     } else if let Some(ref keys) = session.keys {
                                         let nonce_ct = &buf[16..n];
                                         let cipher = Aes256Gcm::new_from_slice(&keys.server_read).unwrap();
-                                        crate::crypto::decrypt_event(&cipher, seq, nonce_ct)
+                                        decrypted = crate::crypto::decrypt_event(&cipher, seq, nonce_ct);
+                                        if decrypted.is_none() {
+                                            decrypt_failed = true;
+                                        }
                                     } else {
                                         eprintln!("[spud] encrypted session missing keys, dropping");
-                                        None
+                                        decrypt_failed = true;
                                     }
                                 } else {
                                     eprintln!("[spud] UDP packet too short for encryption, dropping");
-                                    None
+                                    decrypt_failed = true;
                                 }
-                            } else {
-                                Some(payload.to_vec())
+                            }
+
+                            let pt: &[u8] = match decrypted.as_ref() {
+                                Some(v) => v.as_slice(),
+                                None if !session.encrypt => payload,
+                                None => &[],
                             };
 
-                            if let Some(pt) = plaintext {
+                            if decrypted.is_some() || !session.encrypt {
                                 session.record_decrypt_success();
-                                let batches = crate::net::Event::decode_all_batches(&pt);
+                                let batches = crate::net::Event::decode_all_batches(pt);
                                 if !batches.is_empty() {
                                     // Process redundant batches in ascending order (oldest first).
                                     // Wire order is: [current][newest_redundant]...[oldest_redundant],
@@ -478,7 +487,7 @@ async fn run_server(
                                         session.mouse_history.push(primary.seq_base);
                                     }
                                 }
-                            } else if session.encrypt {
+                            } else if decrypt_failed {
                                 should_remove = session.record_decrypt_failure();
                                 if should_remove {
                                     eprintln!("[spud] UDP too many failed decrypts for conn {conn_id}, removing session");

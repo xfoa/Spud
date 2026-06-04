@@ -326,7 +326,7 @@ fn run_wayland(
             events: libc::POLLIN,
             revents: 0,
         };
-        let result = unsafe { libc::poll(&mut pfd, 1, 50) };
+        let result = unsafe { libc::poll(&mut pfd, 1, 5) };
 
         if result > 0 && (pfd.revents & libc::POLLIN) != 0 {
             read_guard.read()?;

@@ -1,6 +1,5 @@
 use std::error::Error;
 use std::thread;
-use std::time::Duration;
 
 use iced::futures::channel::mpsc;
 use iced::futures::stream::Stream;
@@ -103,12 +102,8 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
             break;
         }
 
-        match conn.poll_for_event()? {
-            None => {
-                thread::sleep(Duration::from_millis(10));
-                continue;
-            }
-            Some(event) => match event {
+        match conn.wait_for_event()? {
+            event => match event {
                 Event::KeyPress(kp) => {
                     let mods = u16::from(kp.state) & RELEVANT_MODS;
                     if kp.detail == keycode && mods == modifiers {
@@ -218,7 +213,7 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
                     }
                 }
                 _ => {}
-            },
+            }
         }
     }
 

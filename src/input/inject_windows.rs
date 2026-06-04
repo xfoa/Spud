@@ -108,8 +108,38 @@ impl InputInjector {
                         }
                     }
                     InjectCmd::Wheel { dx, dy } => {
-                        if dy != 0 {
-                            let delta = i32::from(dy) * WHEEL_DELTA as i32;
+                        if dy != 0 && dx != 0 {
+                            let inputs = [
+                                INPUT {
+                                    r#type: INPUT_MOUSE,
+                                    Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
+                                        mi: MOUSEINPUT {
+                                            dx: 0,
+                                            dy: 0,
+                                            mouseData: (i32::from(dy) * WHEEL_DELTA) as u32,
+                                            dwFlags: MOUSEEVENTF_WHEEL,
+                                            time: 0,
+                                            dwExtraInfo: 0,
+                                        },
+                                    },
+                                },
+                                INPUT {
+                                    r#type: INPUT_MOUSE,
+                                    Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
+                                        mi: MOUSEINPUT {
+                                            dx: 0,
+                                            dy: 0,
+                                            mouseData: (i32::from(dx) * WHEEL_DELTA) as u32,
+                                            dwFlags: MOUSEEVENTF_HWHEEL,
+                                            time: 0,
+                                            dwExtraInfo: 0,
+                                        },
+                                    },
+                                },
+                            ];
+                            send_inputs(&inputs);
+                        } else if dy != 0 {
+                            let delta = i32::from(dy) * WHEEL_DELTA;
                             send_mouse_input(MOUSEINPUT {
                                 dx: 0,
                                 dy: 0,
@@ -118,9 +148,8 @@ impl InputInjector {
                                 time: 0,
                                 dwExtraInfo: 0,
                             });
-                        }
-                        if dx != 0 {
-                            let delta = i32::from(dx) * WHEEL_DELTA as i32;
+                        } else if dx != 0 {
+                            let delta = i32::from(dx) * WHEEL_DELTA;
                             send_mouse_input(MOUSEINPUT {
                                 dx: 0,
                                 dy: 0,
@@ -194,8 +223,12 @@ fn send_mouse_input(mi: MOUSEINPUT) {
             mi,
         },
     };
+    send_inputs(&[input]);
+}
+
+fn send_inputs(inputs: &[INPUT]) {
     unsafe {
-        windows::Win32::UI::Input::KeyboardAndMouse::SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+        windows::Win32::UI::Input::KeyboardAndMouse::SendInput(inputs, std::mem::size_of::<INPUT>() as i32);
     }
 }
 
