@@ -180,27 +180,32 @@ impl InputInjector {
                 // whereas an autorepeat keydown is ignored by the Text Input system.
                 // Modifier keys are never pulsed.
                 let now = Instant::now();
-                for (code, next_repeat) in &mut held_keys {
-                    if now >= *next_repeat {
-                        if let Some(keycode) = macos_keycodes::evdev_to_macos(*code) {
-                            let is_modifier = modifier_flag_for_keycode(keycode) != 0;
-                            if !is_modifier {
-                                let flags = current_modifier_flags(&held_keys);
-                                if let Ok(up) =
-                                    CGEvent::new_keyboard_event(cg_source.clone(), keycode, false)
-                                {
-                                    up.set_flags(flags);
-                                    up.post(CGEventTapLocation::HID);
-                                }
-                                if let Ok(down) =
-                                    CGEvent::new_keyboard_event(cg_source.clone(), keycode, true)
-                                {
-                                    down.set_flags(flags);
-                                    down.post(CGEventTapLocation::HID);
-                                }
+                let to_pulse: Vec<u16> = held_keys
+                    .iter()
+                    .filter(|(_, next_repeat)| now >= **next_repeat)
+                    .map(|(code, _)| *code)
+                    .collect();
+                for code in to_pulse {
+                    if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
+                        let is_modifier = modifier_flag_for_keycode(keycode) != 0;
+                        if !is_modifier {
+                            let flags = current_modifier_flags(&held_keys);
+                            if let Ok(up) =
+                                CGEvent::new_keyboard_event(cg_source.clone(), keycode, false)
+                            {
+                                up.set_flags(flags);
+                                up.post(CGEventTapLocation::HID);
+                            }
+                            if let Ok(down) =
+                                CGEvent::new_keyboard_event(cg_source.clone(), keycode, true)
+                            {
+                                down.set_flags(flags);
+                                down.post(CGEventTapLocation::HID);
                             }
                         }
-                        *next_repeat = now + REPEAT_INTERVAL;
+                    }
+                    if let Some(entry) = held_keys.get_mut(&code) {
+                        *entry = now + REPEAT_INTERVAL;
                     }
                 }
             }
