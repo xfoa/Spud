@@ -564,6 +564,11 @@ impl State {
                     }
                     return;
                 }
+                if let crate::input::InputEvent::BackendError(msg) = event {
+                    eprintln!("[spud] input backend error: {msg}");
+                    self.last_error = Some(msg);
+                    return;
+                }
                 if let Some(wire) = input_event_to_wire(&event, &mut self.pressed_keys, &mut self.pressed_mouse_buttons, self.sensitivity, self.natural_scroll) {
                     if let Some(sender) = &self.sender {
                         sender.send(&wire);

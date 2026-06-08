@@ -83,15 +83,29 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
     };
 
     for extra in [0, MOD_LOCK, MOD_M2, MOD_LOCK | MOD_M2] {
-        conn.grab_key(
+        match conn.grab_key(
             true,
             root,
             ModMask::from(modifiers | extra),
             keycode,
             GrabMode::ASYNC,
             GrabMode::ASYNC,
-        )?
-        .check()?;
+        ) {
+            Ok(cookie) => {
+                if let Err(e) = cookie.check() {
+                    let _ = output.try_send(InputEvent::BackendError(format!(
+                        "could not grab hotkey '{hotkey}': {e} (another application may already be using it)"
+                    )));
+                    return Ok(());
+                }
+            }
+            Err(e) => {
+                let _ = output.try_send(InputEvent::BackendError(format!(
+                    "could not grab hotkey '{hotkey}': {e}"
+                )));
+                return Ok(());
+            }
+        }
     }
     conn.flush()?;
 

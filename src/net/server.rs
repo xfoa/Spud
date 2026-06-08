@@ -691,9 +691,13 @@ async fn handle_client(
     eprintln!("[server] session removed conn={conn_id}");
     if let Some(mut session) = sessions.get_mut(&conn_id) {
         let actions = session.tracker.release_all();
+        if !actions.is_empty() {
+            eprintln!("[server] releasing {} stuck keys/buttons for conn={conn_id}", actions.len());
+        }
         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         if let Some(inj) = injector.get() {
             for action in &actions {
+                eprintln!("[server] inject cleanup: {action}");
                 inj.inject_action(action);
             }
         }
