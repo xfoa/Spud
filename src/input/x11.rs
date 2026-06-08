@@ -82,6 +82,12 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
         }
     };
 
+    // Ungrab first in case a previous instance left stale grabs.
+    for extra in [0, MOD_LOCK, MOD_M2, MOD_LOCK | MOD_M2] {
+        let _ = conn.ungrab_key(keycode, root, ModMask::from(modifiers | extra));
+    }
+    let _ = conn.flush();
+
     for extra in [0, MOD_LOCK, MOD_M2, MOD_LOCK | MOD_M2] {
         match conn.grab_key(
             true,
