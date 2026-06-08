@@ -173,8 +173,7 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
             Event::KeyRelease(kr) if grabbed => {
                 // X11 auto-repeat detection: when X11 auto-repeat is enabled, the server
                 // generates KeyRelease+KeyPress pairs instead of just repeating KeyPress.
-                // Detect this by checking if a KeyPress with the same keycode immediately
-                // follows this KeyRelease in the event queue.
+                // Fast path: check if a matching KeyPress is already in the queue.
                 let is_autorepeat = match conn.poll_for_event()? {
                     Some(Event::KeyPress(kp)) => {
                         let time_diff = kp.time.saturating_sub(kr.time);
@@ -189,7 +188,15 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
                         pending = Some(other);
                         false
                     }
-                    None => false,
+                    None => {
+                        // Queue empty: the KeyPress may be in flight. Check physical
+                        // keyboard state to avoid the race where we treat an auto-repeat
+                        // release as real.
+                        let keymap = conn.query_keymap()?.reply()?;
+                        let byte = (kr.detail / 8) as usize;
+                        let bit = kr.detail % 8;
+                        (keymap.keys[byte] >> bit) & 1 != 0
+                    }
                 };
 
                 if !is_autorepeat {

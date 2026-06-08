@@ -553,8 +553,14 @@ impl State {
                         is_window_mode,
                         self.natural_scroll,
                     ) {
-                        if let crate::net::Event::KeyDown(code, _) = &wire {
-                            self.sent_keys.insert(*code);
+                        match &wire {
+                            crate::net::Event::KeyDown(code, _) => {
+                                self.sent_keys.insert(*code);
+                            }
+                            crate::net::Event::KeyUp(code, _) => {
+                                self.sent_keys.remove(code);
+                            }
+                            _ => {}
                         }
                         if let Some(sender) = &self.sender {
                             sender.send(&wire);
@@ -577,8 +583,14 @@ impl State {
                     return;
                 }
                 if let Some(wire) = input_event_to_wire(&event, &mut self.pressed_keys, &mut self.pressed_mouse_buttons, self.sensitivity, self.natural_scroll) {
-                    if let crate::net::Event::KeyDown(code, _) = &wire {
-                        self.sent_keys.insert(*code);
+                    match &wire {
+                        crate::net::Event::KeyDown(code, _) => {
+                            self.sent_keys.insert(*code);
+                        }
+                        crate::net::Event::KeyUp(code, _) => {
+                            self.sent_keys.remove(code);
+                        }
+                        _ => {}
                     }
                     if let Some(sender) = &self.sender {
                         sender.send(&wire);

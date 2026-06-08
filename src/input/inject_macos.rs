@@ -111,6 +111,7 @@ impl InputInjector {
                             }
                             InjectCmd::KeyDown { code } => {
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
+                                    println!("[macos-injector] KeyDown evdev={code} macos_keycode={keycode}");
                                     // Check if this is a Super+Space combo (input source switch on macOS)
                                     let has_super = held_keys.contains_key(&125) || held_keys.contains_key(&126);
                                     if has_super && code == 57 {
@@ -132,6 +133,7 @@ impl InputInjector {
                             }
                             InjectCmd::KeyUp { code } => {
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
+                                    println!("[macos-injector] KeyUp evdev={code} macos_keycode={keycode}");
                                     held_keys.remove(&code);
                                     if let Ok(event) =
                                         CGEvent::new_keyboard_event(cg_source.clone(), keycode, false)
@@ -174,11 +176,11 @@ impl InputInjector {
                     Err(RecvTimeoutError::Disconnected) => break,
                 }
 
-                // Pulse key-up / key-down on every repeat tick.
-                // We deliberately do NOT set KEYBOARD_EVENT_AUTOREPEAT on the down
-                // event — a "fresh" keydown resets macOS's accent-menu timer,
-                // whereas an autorepeat keydown is ignored by the Text Input system.
-                // Modifier keys are never pulsed.
+                // NOTE: The pulse loop that sent KeyUp+KeyDown every 50ms has been
+                // removed. It caused games to see phantom key releases. macOS's
+                // accent-menu timer may now trigger for text input apps, but gaming
+                // correctness is prioritized. If needed, KeyRepeat heartbeats from the
+                // client could be forwarded to the injector to drive slower pulses.
                 let now = Instant::now();
                 let to_pulse: Vec<u16> = held_keys
                     .iter()
@@ -186,24 +188,7 @@ impl InputInjector {
                     .map(|(code, _)| *code)
                     .collect();
                 for code in to_pulse {
-                    if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
-                        let is_modifier = modifier_flag_for_keycode(keycode) != 0;
-                        if !is_modifier {
-                            let flags = current_modifier_flags(&held_keys);
-                            if let Ok(up) =
-                                CGEvent::new_keyboard_event(cg_source.clone(), keycode, false)
-                            {
-                                up.set_flags(flags);
-                                up.post(CGEventTapLocation::HID);
-                            }
-                            if let Ok(down) =
-                                CGEvent::new_keyboard_event(cg_source.clone(), keycode, true)
-                            {
-                                down.set_flags(flags);
-                                down.post(CGEventTapLocation::HID);
-                            }
-                        }
-                    }
+                    // Just reset the repeat timer without injecting anything.
                     if let Some(entry) = held_keys.get_mut(&code) {
                         *entry = now + REPEAT_INTERVAL;
                     }
