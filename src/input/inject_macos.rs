@@ -111,7 +111,6 @@ impl InputInjector {
                             }
                             InjectCmd::KeyDown { code } => {
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
-                                    eprintln!("[macos-inj] KeyDown evdev={code} macos={keycode}");
                                     // Check if this is a Super+Space combo (input source switch on macOS)
                                     let has_super = held_keys.contains_key(&125) || held_keys.contains_key(&126);
                                     if has_super && code == 57 {
@@ -125,19 +124,20 @@ impl InputInjector {
                                     if let Ok(event) =
                                         CGEvent::new_keyboard_event(cg_source.clone(), keycode, true)
                                     {
+                                        let flags = current_modifier_flags(&held_keys);
+                                        event.set_flags(flags);
                                         event.post(CGEventTapLocation::HID);
                                     }
-                                } else {
-                                    eprintln!("[macos-inj] KeyDown evdev={code} -> no mapping");
                                 }
                             }
                             InjectCmd::KeyUp { code } => {
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
-                                    eprintln!("[macos-inj] KeyUp   evdev={code} macos={keycode} held_before={}", held_keys.contains_key(&code));
                                     held_keys.remove(&code);
                                     if let Ok(event) =
                                         CGEvent::new_keyboard_event(cg_source.clone(), keycode, false)
                                     {
+                                        let flags = current_modifier_flags(&held_keys);
+                                        event.set_flags(flags);
                                         event.post(CGEventTapLocation::HID);
                                     }
                                     // If this is a Super key release and Space was pressed during Super,
@@ -148,13 +148,13 @@ impl InputInjector {
                                             if let Ok(up) =
                                                 CGEvent::new_keyboard_event(cg_source.clone(), space_keycode, false)
                                             {
+                                                let flags = current_modifier_flags(&held_keys);
+                                                up.set_flags(flags);
                                                 up.post(CGEventTapLocation::HID);
                                             }
                                         }
                                         space_during_super = false;
                                     }
-                                } else {
-                                    eprintln!("[macos-inj] KeyUp   evdev={code} -> no mapping");
                                 }
                             }
                             InjectCmd::ButtonDown { code } => {
@@ -185,14 +185,17 @@ impl InputInjector {
                         if let Some(keycode) = macos_keycodes::evdev_to_macos(*code) {
                             let is_modifier = modifier_flag_for_keycode(keycode) != 0;
                             if !is_modifier {
+                                let flags = current_modifier_flags(&held_keys);
                                 if let Ok(up) =
                                     CGEvent::new_keyboard_event(cg_source.clone(), keycode, false)
                                 {
+                                    up.set_flags(flags);
                                     up.post(CGEventTapLocation::HID);
                                 }
                                 if let Ok(down) =
                                     CGEvent::new_keyboard_event(cg_source.clone(), keycode, true)
                                 {
+                                    down.set_flags(flags);
                                     down.post(CGEventTapLocation::HID);
                                 }
                             }
@@ -481,6 +484,33 @@ fn modifier_flag_for_keycode(keycode: u16) -> u32 {
         k if k == KeyCode::CAPS_LOCK => NX_ALPHASHIFTMASK,
         _ => 0,
     }
+}
+
+/// Compute the CGEventFlags that should be set on every injected keyboard event
+/// based on which modifier keys are currently held in the injector's state.
+fn current_modifier_flags(held_keys: &HashMap<u16, Instant>) -> CGEventFlags {
+    let mut flags = CGEventFlags::CGEventFlagNull;
+    for code in held_keys.keys() {
+        if let Some(keycode) = macos_keycodes::evdev_to_macos(*code) {
+            let flag = modifier_flag_for_keycode(keycode);
+            if (flag & NX_SHIFTMASK) != 0 {
+                flags |= CGEventFlags::CGEventFlagShift;
+            }
+            if (flag & NX_CONTROLMASK) != 0 {
+                flags |= CGEventFlags::CGEventFlagControl;
+            }
+            if (flag & NX_ALTERNATEMASK) != 0 {
+                flags |= CGEventFlags::CGEventFlagAlternate;
+            }
+            if (flag & NX_COMMANDMASK) != 0 {
+                flags |= CGEventFlags::CGEventFlagCommand;
+            }
+            if (flag & NX_ALPHASHIFTMASK) != 0 {
+                flags |= CGEventFlags::CGEventFlagAlphaShift;
+            }
+        }
+    }
+    flags
 }
 
 /* ------------------------------------------------------------------ */
