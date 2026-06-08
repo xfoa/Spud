@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::os::unix::io::AsRawFd;
 use std::thread;
 
 use iced::futures::channel::mpsc;
@@ -72,6 +73,8 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
 
     conn.xfixes_query_version(5, 0)?.reply()?;
 
+    let x11_fd = conn.stream().as_raw_fd();
+
     let (modifiers, keycode) = match parse_hotkey(&conn, hotkey) {
         Ok(v) => v,
         Err(e) => {
@@ -125,7 +128,21 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
 
         let event = match pending.take() {
             Some(e) => e,
-            None => conn.wait_for_event()?,
+            None => match conn.poll_for_event()? {
+                Some(e) => e,
+                None => {
+                    let mut pollfd = libc::pollfd {
+                        fd: x11_fd,
+                        events: libc::POLLIN,
+                        revents: 0,
+                    };
+                    let ret = unsafe { libc::poll(&mut pollfd, 1, 10) };
+                    if ret < 0 || pollfd.revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 {
+                        break;
+                    }
+                    continue;
+                }
+            },
         };
 
         match event {
