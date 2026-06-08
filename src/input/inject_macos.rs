@@ -176,11 +176,12 @@ impl InputInjector {
                     Err(RecvTimeoutError::Disconnected) => break,
                 }
 
-                // Pulse autorepeat keydown on every repeat tick.
-                // We emit only KeyDown (no KeyUp) so games don't see a phantom
-                // release. The autorepeat flag tells macOS this is a repeat,
-                // not a fresh press, which keeps text input working without
-                // resetting the accent-menu timer on every pulse.
+                // Pulse KeyUp+KeyDown on every repeat tick to reset macOS's
+                // accent-menu timer. We post these to the current Session
+                // (application event queue) instead of HID so that games
+                // monitoring the HID/raw-input stream don't see a phantom
+                // release. The Text Input system still sees the events and
+                // resets its hold timer, preventing the accent menu.
                 let now = Instant::now();
                 let to_pulse: Vec<u16> = held_keys
                     .iter()
@@ -192,12 +193,17 @@ impl InputInjector {
                         let is_modifier = modifier_flag_for_keycode(keycode) != 0;
                         if !is_modifier {
                             let flags = current_modifier_flags(&held_keys);
+                            if let Ok(up) =
+                                CGEvent::new_keyboard_event(cg_source.clone(), keycode, false)
+                            {
+                                up.set_flags(flags);
+                                up.post(CGEventTapLocation::Session);
+                            }
                             if let Ok(down) =
                                 CGEvent::new_keyboard_event(cg_source.clone(), keycode, true)
                             {
-                                down.set_integer_value_field(EventField::KEYBOARD_EVENT_AUTOREPEAT, 1);
                                 down.set_flags(flags);
-                                down.post(CGEventTapLocation::HID);
+                                down.post(CGEventTapLocation::Session);
                             }
                         }
                     }
