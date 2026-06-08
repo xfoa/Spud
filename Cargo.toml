@@ -1,6 +1,6 @@
 [package]
 name = "spud"
-version = "1.0.5-beta"
+version = "1.0.5"
 edition = "2024"
 rust-version = "1.95"
 description = "Cross-platform remote control application optimised for gaming"
