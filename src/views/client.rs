@@ -122,6 +122,7 @@ pub struct State {
     last_cursor: Option<Point>,
     last_error: Option<String>,
     pressed_keys: HashSet<u16>,
+    sent_keys: HashSet<u16>,
     pressed_mouse_buttons: HashSet<u8>,
     key_repeat_interval_ms: u16,
     reconnecting: bool,
@@ -184,6 +185,7 @@ impl State {
             last_cursor: None,
             last_error: None,
             pressed_keys: HashSet::new(),
+            sent_keys: HashSet::new(),
             pressed_mouse_buttons: HashSet::new(),
             key_repeat_interval_ms: cfg.key_repeat_interval_ms,
             reconnecting: false,
@@ -343,6 +345,7 @@ impl State {
                 self.last_cursor = None;
                 self.last_error = None;
                 self.pressed_keys.clear();
+                self.sent_keys.clear();
                 self.pressed_mouse_buttons.clear();
                 self.reconnecting = false;
                 self.reconnect_generation += 1;
@@ -360,6 +363,7 @@ impl State {
                     self.sender = None;
                     self.last_cursor = None;
                     self.pressed_keys.clear();
+                    self.sent_keys.clear();
                     self.pressed_mouse_buttons.clear();
                     self.reconnecting = true;
                     self.reconnect_generation += 1;
@@ -549,6 +553,9 @@ impl State {
                         is_window_mode,
                         self.natural_scroll,
                     ) {
+                        if let crate::net::Event::KeyDown(code, _) = &wire {
+                            self.sent_keys.insert(*code);
+                        }
                         if let Some(sender) = &self.sender {
                             sender.send(&wire);
                         }
@@ -570,6 +577,9 @@ impl State {
                     return;
                 }
                 if let Some(wire) = input_event_to_wire(&event, &mut self.pressed_keys, &mut self.pressed_mouse_buttons, self.sensitivity, self.natural_scroll) {
+                    if let crate::net::Event::KeyDown(code, _) = &wire {
+                        self.sent_keys.insert(*code);
+                    }
                     if let Some(sender) = &self.sender {
                         sender.send(&wire);
                     }
@@ -694,14 +704,18 @@ impl State {
 
     fn release_all_held(&mut self) {
         if let Some(sender) = &self.sender {
-            for name in &self.pressed_keys {
-                sender.send(&crate::net::Event::KeyUp(name.clone(), 0));
+            // Release all keys that were ever sent as KeyDown, not just
+            // the ones currently in pressed_keys. This catches keys
+            // whose KeyUp was lost in transit.
+            for code in &self.sent_keys {
+                sender.send(&crate::net::Event::KeyUp(*code, 0));
             }
             for button in &self.pressed_mouse_buttons {
                 sender.send(&crate::net::Event::MouseButton { button: *button, pressed: false });
             }
         }
         self.pressed_keys.clear();
+        self.sent_keys.clear();
         self.pressed_mouse_buttons.clear();
     }
 
