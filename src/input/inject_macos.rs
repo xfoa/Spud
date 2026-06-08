@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use core_graphics::display::CGDisplay;
 use core_graphics::event::{
-    CGEvent, CGEventTapLocation, CGEventType, EventField, KeyCode,
+    CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, EventField, KeyCode,
 };
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use core_graphics::geometry::CGPoint;
