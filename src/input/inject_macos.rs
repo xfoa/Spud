@@ -176,11 +176,11 @@ impl InputInjector {
                     Err(RecvTimeoutError::Disconnected) => break,
                 }
 
-                // NOTE: The pulse loop that sent KeyUp+KeyDown every 50ms has been
-                // removed. It caused games to see phantom key releases. macOS's
-                // accent-menu timer may now trigger for text input apps, but gaming
-                // correctness is prioritized. If needed, KeyRepeat heartbeats from the
-                // client could be forwarded to the injector to drive slower pulses.
+                // Pulse autorepeat keydown on every repeat tick.
+                // We emit only KeyDown (no KeyUp) so games don't see a phantom
+                // release. The autorepeat flag tells macOS this is a repeat,
+                // not a fresh press, which keeps text input working without
+                // resetting the accent-menu timer on every pulse.
                 let now = Instant::now();
                 let to_pulse: Vec<u16> = held_keys
                     .iter()
@@ -188,7 +188,19 @@ impl InputInjector {
                     .map(|(code, _)| *code)
                     .collect();
                 for code in to_pulse {
-                    // Just reset the repeat timer without injecting anything.
+                    if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
+                        let is_modifier = modifier_flag_for_keycode(keycode) != 0;
+                        if !is_modifier {
+                            let flags = current_modifier_flags(&held_keys);
+                            if let Ok(down) =
+                                CGEvent::new_keyboard_event(cg_source.clone(), keycode, true)
+                            {
+                                down.set_integer_value_field(EventField::KEYBOARD_EVENT_AUTOREPEAT, 1);
+                                down.set_flags(flags);
+                                down.post(CGEventTapLocation::HID);
+                            }
+                        }
+                    }
                     if let Some(entry) = held_keys.get_mut(&code) {
                         *entry = now + REPEAT_INTERVAL;
                     }
