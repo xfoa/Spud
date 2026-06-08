@@ -599,9 +599,6 @@ impl State {
             }
             Message::KeyRepeatTick => {
                 if let Some(sender) = &self.sender {
-                    if !self.pressed_keys.is_empty() || !self.pressed_mouse_buttons.is_empty() {
-                        println!("[client] KeyRepeatTick keys={:?} buttons={:?}", self.pressed_keys, self.pressed_mouse_buttons);
-                    }
                     for code in &self.pressed_keys {
                         sender.send(&crate::net::Event::KeyRepeat(*code, 0));
                     }
@@ -1750,22 +1747,15 @@ fn iced_to_wire(
                 .or_else(|| key_to_evdev(key))?;
             let inserted = pressed_keys.insert(code);
             if inserted {
-                println!("[client] KeyPressed -> KeyDown code={code}");
                 Some(crate::net::Event::KeyDown(code, 0))
             } else {
-                println!("[client] KeyPressed ignored (already in pressed_keys) code={code}");
                 None
             }
         }
         iced::Event::Keyboard(keyboard::Event::KeyReleased { key, physical_key, .. }) => {
             let code = physical_key_to_evdev(physical_key)
                 .or_else(|| key_to_evdev(key))?;
-            let was_present = pressed_keys.remove(&code);
-            if was_present {
-                println!("[client] KeyReleased -> KeyUp code={code}");
-            } else {
-                println!("[client] KeyReleased -> KeyUp (orphan, not in pressed_keys) code={code}");
-            }
+            pressed_keys.remove(&code);
             Some(crate::net::Event::KeyUp(code, 0))
         }
         iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
@@ -1846,10 +1836,8 @@ fn input_event_to_wire(
             }
             let inserted = pressed_keys.insert(code);
             if inserted {
-                println!("[client] KeyPress -> KeyDown code={code}");
                 Some(crate::net::Event::KeyDown(code, 0))
             } else {
-                println!("[client] KeyPress ignored (already in pressed_keys) code={code}");
                 None
             }
         }
@@ -1863,12 +1851,7 @@ fn input_event_to_wire(
             if code == 0 {
                 return None;
             }
-            let was_present = pressed_keys.remove(&code);
-            if was_present {
-                println!("[client] KeyRelease -> KeyUp code={code}");
-            } else {
-                println!("[client] KeyRelease -> KeyUp (orphan, not in pressed_keys) code={code}");
-            }
+            pressed_keys.remove(&code);
             Some(crate::net::Event::KeyUp(code, 0))
         }
         InputEvent::MouseMove { dx, dy } => Some(crate::net::Event::MouseMove {

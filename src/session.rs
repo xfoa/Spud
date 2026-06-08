@@ -194,10 +194,7 @@ impl KeyTracker {
                 let mut actions = Vec::new();
                 let name = evdev_name(*code);
                 if self.keys.contains_key(code) {
-                    println!("[server] tracker KeyDown while already held: {name} -> release (lost up) then press");
                     actions.push(format!("release {name} (lost up)"));
-                } else {
-                    println!("[server] tracker KeyDown: {name}");
                 }
                 actions.push(format!("press {name}"));
                 self.keys.insert(*code, Instant::now());
@@ -206,31 +203,24 @@ impl KeyTracker {
             Event::KeyRepeat(code, _) => {
                 let name = evdev_name(*code);
                 if self.keys.contains_key(code) {
-                    println!("[server] tracker KeyRepeat: {name}");
                     self.keys.insert(*code, Instant::now());
                     vec![format!("repeat {name}")]
                 } else {
-                    println!("[server] tracker KeyRepeat ignored (not held): {name}");
                     Vec::new()
                 }
             }
             Event::KeyUp(code, _) => {
                 let name = evdev_name(*code);
                 if self.keys.remove(code).is_some() {
-                    println!("[server] tracker KeyUp: {name}");
                     vec![format!("release {name}")]
                 } else {
-                    println!("[server] tracker KeyUp ignored (not held): {name}");
                     Vec::new()
                 }
             }
             Event::MouseButton { button, pressed: true } => {
                 let mut actions = Vec::new();
                 if self.mouse_buttons.contains_key(button) {
-                    println!("[server] tracker MouseButton down while already held: {button} -> release (lost up) then press");
                     actions.push(format!("release mouse {button} (lost up)"));
-                } else {
-                    println!("[server] tracker MouseButton down: {button}");
                 }
                 actions.push(format!("press mouse {button}"));
                 self.mouse_buttons.insert(*button, Instant::now());
@@ -238,20 +228,16 @@ impl KeyTracker {
             }
             Event::MouseButtonRepeat(button) => {
                 if self.mouse_buttons.contains_key(button) {
-                    println!("[server] tracker MouseButtonRepeat: {button}");
                     self.mouse_buttons.insert(*button, Instant::now());
                     vec![format!("repeat mouse {button}")]
                 } else {
-                    println!("[server] tracker MouseButtonRepeat ignored (not held): {button}");
                     Vec::new()
                 }
             }
             Event::MouseButton { button, pressed: false } => {
                 if self.mouse_buttons.remove(button).is_some() {
-                    println!("[server] tracker MouseButton up: {button}");
                     vec![format!("release mouse {button}")]
                 } else {
-                    println!("[server] tracker MouseButton up ignored (not held): {button}");
                     Vec::new()
                 }
             }
@@ -265,9 +251,7 @@ impl KeyTracker {
         let mut expired = Vec::new();
         self.keys.retain(|code, last| {
             if now.duration_since(*last) > self.timeout {
-                let name = evdev_name(*code);
-                println!("[server] tracker sweep timeout: {name}");
-                expired.push(format!("release {} (timeout)", name));
+                expired.push(format!("release {} (timeout)", evdev_name(*code)));
                 false
             } else {
                 true
@@ -275,7 +259,6 @@ impl KeyTracker {
         });
         self.mouse_buttons.retain(|button, last| {
             if now.duration_since(*last) > self.timeout {
-                println!("[server] tracker sweep timeout: mouse {button}");
                 expired.push(format!("release mouse {button} (timeout)"));
                 false
             } else {

@@ -302,9 +302,6 @@ async fn run_server(
             _ = sweep_interval.tick() => {
                 for mut session in sessions.iter_mut() {
                     let actions = session.tracker.sweep();
-                    if !actions.is_empty() {
-                        println!("[server] tracker sweep actions: {actions:?}");
-                    }
                     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
                     if let Some(inj) = injector.get() {
                         for action in &actions {
@@ -404,7 +401,6 @@ async fn run_server(
                                         };
                                         if let Some(s) = seq {
                                             if s != 0 && session.key_history.contains(s) {
-                                                println!("[server] dedup drop seq={s} event={event:?}");
                                                 continue; // duplicate
                                             }
                                             if s != 0 {
@@ -435,9 +431,6 @@ async fn run_server(
                                         };
 
                                         let actions = session.tracker.handle_event(event);
-                                        if !actions.is_empty() {
-                                            println!("[server] tracker actions for {event:?}: {actions:?}");
-                                        }
                                         #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
                                         if let Some(inj) = injector.get() {
                                             if !is_localhost {
