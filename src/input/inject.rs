@@ -73,51 +73,90 @@ impl InputInjector {
                 }
             };
 
-            let mut pending_rel: Option<(i32, i32)> = None;
             while let Ok(cmd) = rx.recv() {
-                let flush_pending = !matches!(cmd, InjectCmd::MouseRel { .. });
-                if flush_pending {
-                    if let Some((dx, dy)) = pending_rel.take() {
-                        kinput_device.mouse.rel.move_xy(dx, dy);
-                    }
-                }
                 match cmd {
-                    InjectCmd::MouseAbs { x, y } => {
-                        kinput_device.mouse.abs.move_xy(x, y);
-                    }
                     InjectCmd::MouseRel { dx, dy } => {
-                        let (acc_dx, acc_dy) = pending_rel.unwrap_or((0, 0));
-                        pending_rel = Some((acc_dx.saturating_add(dx), acc_dy.saturating_add(dy)));
-                    }
-                    InjectCmd::KeyDown { code } => {
-                        if let Some(ref mut dev) = evdev_device {
-                            let _ = emit_key(dev, code, 1);
+                        let mut total_dx = dx;
+                        let mut total_dy = dy;
+                        let mut queued_non_move: Option<InjectCmd> = None;
+                        while let Ok(next) = rx.try_recv() {
+                            if let InjectCmd::MouseRel { dx, dy } = next {
+                                total_dx = total_dx.saturating_add(dx);
+                                total_dy = total_dy.saturating_add(dy);
+                            } else {
+                                queued_non_move = Some(next);
+                                break;
+                            }
+                        }
+                        kinput_device.mouse.rel.move_xy(total_dx, total_dy);
+                        if let Some(cmd) = queued_non_move {
+                            match cmd {
+                                InjectCmd::MouseAbs { x, y } => {
+                                    kinput_device.mouse.abs.move_xy(x, y);
+                                }
+                                InjectCmd::KeyDown { code } => {
+                                    if let Some(ref mut dev) = evdev_device {
+                                        let _ = emit_key(dev, code, 1);
+                                    }
+                                }
+                                InjectCmd::KeyUp { code } => {
+                                    if let Some(ref mut dev) = evdev_device {
+                                        let _ = emit_key(dev, code, 0);
+                                    }
+                                }
+                                InjectCmd::ButtonDown { code } => {
+                                    if let Some(ref mut dev) = evdev_device {
+                                        let _ = emit_key(dev, code, 1);
+                                    }
+                                }
+                                InjectCmd::ButtonUp { code } => {
+                                    if let Some(ref mut dev) = evdev_device {
+                                        let _ = emit_key(dev, code, 0);
+                                    }
+                                }
+                                InjectCmd::Wheel { dx, dy } => {
+                                    if let Some(ref mut dev) = evdev_device {
+                                        let _ = emit_wheel(dev, dx, dy);
+                                    }
+                                }
+                                _ => {}
+                            }
                         }
                     }
-                    InjectCmd::KeyUp { code } => {
-                        if let Some(ref mut dev) = evdev_device {
-                            let _ = emit_key(dev, code, 0);
-                        }
-                    }
-                    InjectCmd::ButtonDown { code } => {
-                        if let Some(ref mut dev) = evdev_device {
-                            let _ = emit_key(dev, code, 1);
-                        }
-                    }
-                    InjectCmd::ButtonUp { code } => {
-                        if let Some(ref mut dev) = evdev_device {
-                            let _ = emit_key(dev, code, 0);
-                        }
-                    }
-                    InjectCmd::Wheel { dx, dy } => {
-                        if let Some(ref mut dev) = evdev_device {
-                            let _ = emit_wheel(dev, dx, dy);
+                    other => {
+                        match other {
+                            InjectCmd::MouseAbs { x, y } => {
+                                kinput_device.mouse.abs.move_xy(x, y);
+                            }
+                            InjectCmd::KeyDown { code } => {
+                                if let Some(ref mut dev) = evdev_device {
+                                    let _ = emit_key(dev, code, 1);
+                                }
+                            }
+                            InjectCmd::KeyUp { code } => {
+                                if let Some(ref mut dev) = evdev_device {
+                                    let _ = emit_key(dev, code, 0);
+                                }
+                            }
+                            InjectCmd::ButtonDown { code } => {
+                                if let Some(ref mut dev) = evdev_device {
+                                    let _ = emit_key(dev, code, 1);
+                                }
+                            }
+                            InjectCmd::ButtonUp { code } => {
+                                if let Some(ref mut dev) = evdev_device {
+                                    let _ = emit_key(dev, code, 0);
+                                }
+                            }
+                            InjectCmd::Wheel { dx, dy } => {
+                                if let Some(ref mut dev) = evdev_device {
+                                    let _ = emit_wheel(dev, dx, dy);
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }
-            }
-            if let Some((dx, dy)) = pending_rel.take() {
-                kinput_device.mouse.rel.move_xy(dx, dy);
             }
             println!("[spud] input injector thread exiting");
         });

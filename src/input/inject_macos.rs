@@ -87,7 +87,6 @@ impl InputInjector {
             // the target application from seeing Space as "stuck".
             let mut space_during_super: bool = false;
 
-            let mut pending_rel: Option<(i32, i32)> = None;
             loop {
                 let timeout = if held_keys.is_empty() {
                     Duration::from_secs(1)
@@ -96,22 +95,90 @@ impl InputInjector {
                 };
                 match rx.recv_timeout(timeout) {
                     Ok(cmd) => {
-                        let flush_pending = !matches!(cmd, InjectCmd::MouseRel { .. });
-                        if flush_pending {
-                            if let Some((dx, dy)) = pending_rel.take() {
-                                cursor.x += f64::from(dx);
-                                cursor.y += f64::from(dy);
-                                post_mouse_relative(&hid, dx, dy, &pressed_buttons);
-                            }
-                        }
                         match cmd {
                             InjectCmd::MouseAbs { x, y } => {
                                 cursor = CGPoint::new(f64::from(x), f64::from(y));
                                 post_mouse_move(&hid, cursor, &pressed_buttons);
                             }
                             InjectCmd::MouseRel { dx, dy } => {
-                                let (acc_dx, acc_dy) = pending_rel.unwrap_or((0, 0));
-                                pending_rel = Some((acc_dx.saturating_add(dx), acc_dy.saturating_add(dy)));
+                                let mut total_dx = dx;
+                                let mut total_dy = dy;
+                                let mut queued_non_move: Option<InjectCmd> = None;
+                                while let Ok(next) = rx.try_recv() {
+                                    if let InjectCmd::MouseRel { dx, dy } = next {
+                                        total_dx = total_dx.saturating_add(dx);
+                                        total_dy = total_dy.saturating_add(dy);
+                                    } else {
+                                        queued_non_move = Some(next);
+                                        break;
+                                    }
+                                }
+                                cursor.x += f64::from(total_dx);
+                                cursor.y += f64::from(total_dy);
+                                post_mouse_relative(&hid, total_dx, total_dy, &pressed_buttons);
+                                if let Some(cmd) = queued_non_move {
+                                    match cmd {
+                                        InjectCmd::MouseAbs { x, y } => {
+                                            cursor = CGPoint::new(f64::from(x), f64::from(y));
+                                            post_mouse_move(&hid, cursor, &pressed_buttons);
+                                        }
+                                        InjectCmd::KeyDown { code } => {
+                                            if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
+                                                let has_super = held_keys.contains_key(&125) || held_keys.contains_key(&126);
+                                                if has_super && code == 57 {
+                                                    space_during_super = true;
+                                                }
+                                                if (code == 125 || code == 126) && held_keys.contains_key(&57) {
+                                                    space_during_super = true;
+                                                }
+                                                held_keys.insert(code, Instant::now() + REPEAT_INITIAL_DELAY);
+                                                if let Ok(event) =
+                                                    CGEvent::new_keyboard_event(cg_source.clone(), keycode, true)
+                                                {
+                                                    let flags = current_modifier_flags(&held_keys);
+                                                    event.set_flags(flags);
+                                                    event.post(CGEventTapLocation::HID);
+                                                }
+                                            }
+                                        }
+                                        InjectCmd::KeyUp { code } => {
+                                            if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
+                                                held_keys.remove(&code);
+                                                if let Ok(event) =
+                                                    CGEvent::new_keyboard_event(cg_source.clone(), keycode, false)
+                                                {
+                                                    let flags = current_modifier_flags(&held_keys);
+                                                    event.set_flags(flags);
+                                                    event.post(CGEventTapLocation::HID);
+                                                }
+                                                if (code == 125 || code == 126) && space_during_super {
+                                                    if let Some(space_keycode) = macos_keycodes::evdev_to_macos(57) {
+                                                        if let Ok(up) =
+                                                            CGEvent::new_keyboard_event(cg_source.clone(), space_keycode, false)
+                                                        {
+                                                            let flags = current_modifier_flags(&held_keys);
+                                                            up.set_flags(flags);
+                                                            up.post(CGEventTapLocation::HID);
+                                                        }
+                                                    }
+                                                    space_during_super = false;
+                                                }
+                                            }
+                                        }
+                                        InjectCmd::ButtonDown { code } => {
+                                            pressed_buttons.insert(code as u8);
+                                            post_mouse_button(&hid, cursor, code, true);
+                                        }
+                                        InjectCmd::ButtonUp { code } => {
+                                            pressed_buttons.remove(&(code as u8));
+                                            post_mouse_button(&hid, cursor, code, false);
+                                        }
+                                        InjectCmd::Wheel { dx, dy } => {
+                                            post_scroll(&hid, &cg_source, dx, dy);
+                                        }
+                                        _ => {}
+                                    }
+                                }
                             }
                             InjectCmd::KeyDown { code } => {
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
@@ -213,11 +280,6 @@ impl InputInjector {
                         *entry = now + REPEAT_INTERVAL;
                     }
                 }
-            }
-            if let Some((dx, dy)) = pending_rel.take() {
-                cursor.x += f64::from(dx);
-                cursor.y += f64::from(dy);
-                post_mouse_relative(&hid, dx, dy, &pressed_buttons);
             }
             eprintln!("[spud] macOS input injector thread exiting");
         });

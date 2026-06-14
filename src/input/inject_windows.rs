@@ -53,132 +53,231 @@ impl InputInjector {
                 )
             };
 
-            let mut pending_rel: Option<(i32, i32)> = None;
             while let Ok(cmd) = rx.recv() {
-                let flush_pending = !matches!(cmd, InjectCmd::MouseRel { .. });
-                if flush_pending {
-                    if let Some((dx, dy)) = pending_rel.take() {
+                match cmd {
+                    InjectCmd::MouseRel { dx, dy } => {
+                        let mut total_dx = dx;
+                        let mut total_dy = dy;
+                        let mut queued_non_move: Option<InjectCmd> = None;
+                        while let Ok(next) = rx.try_recv() {
+                            if let InjectCmd::MouseRel { dx, dy } = next {
+                                total_dx = total_dx.saturating_add(dx);
+                                total_dy = total_dy.saturating_add(dy);
+                            } else {
+                                queued_non_move = Some(next);
+                                break;
+                            }
+                        }
                         send_mouse_input(MOUSEINPUT {
-                            dx,
-                            dy,
+                            dx: total_dx,
+                            dy: total_dy,
                             mouseData: 0,
                             dwFlags: MOUSEEVENTF_MOVE,
                             time: 0,
                             dwExtraInfo: 0,
                         });
-                    }
-                }
-                match cmd {
-                    InjectCmd::MouseAbs { x, y } => {
-                        let nx = ((x - vd_x) * 65535 / vd_w) as i32;
-                        let ny = ((y - vd_y) * 65535 / vd_h) as i32;
-                        send_mouse_input(MOUSEINPUT {
-                            dx: nx,
-                            dy: ny,
-                            mouseData: 0,
-                            dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
-                            time: 0,
-                            dwExtraInfo: 0,
-                        });
-                    }
-                    InjectCmd::MouseRel { dx, dy } => {
-                        let (acc_dx, acc_dy) = pending_rel.unwrap_or((0, 0));
-                        pending_rel = Some((acc_dx.saturating_add(dx), acc_dy.saturating_add(dy)));
-                    }
-                    InjectCmd::KeyDown { code } => {
-                        send_key_event(code, true);
-                    }
-                    InjectCmd::KeyUp { code } => {
-                        send_key_event(code, false);
-                    }
-                    InjectCmd::ButtonDown { code } => {
-                        if let Some((flag, data)) = wire_to_mouse_event(true, code as u8) {
-                            send_mouse_input(MOUSEINPUT {
-                                dx: 0,
-                                dy: 0,
-                                mouseData: data,
-                                dwFlags: flag,
-                                time: 0,
-                                dwExtraInfo: 0,
-                            });
-                        }
-                    }
-                    InjectCmd::ButtonUp { code } => {
-                        if let Some((flag, data)) = wire_to_mouse_event(false, code as u8) {
-                            send_mouse_input(MOUSEINPUT {
-                                dx: 0,
-                                dy: 0,
-                                mouseData: data,
-                                dwFlags: flag,
-                                time: 0,
-                                dwExtraInfo: 0,
-                            });
-                        }
-                    }
-                    InjectCmd::Wheel { dx, dy } => {
-                        if dy != 0 && dx != 0 {
-                            let inputs = [
-                                INPUT {
-                                    r#type: INPUT_MOUSE,
-                                    Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
-                                        mi: MOUSEINPUT {
+                        if let Some(cmd) = queued_non_move {
+                            match cmd {
+                                InjectCmd::MouseAbs { x, y } => {
+                                    let nx = ((x - vd_x) * 65535 / vd_w) as i32;
+                                    let ny = ((y - vd_y) * 65535 / vd_h) as i32;
+                                    send_mouse_input(MOUSEINPUT {
+                                        dx: nx,
+                                        dy: ny,
+                                        mouseData: 0,
+                                        dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+                                        time: 0,
+                                        dwExtraInfo: 0,
+                                    });
+                                }
+                                InjectCmd::KeyDown { code } => {
+                                    send_key_event(code, true);
+                                }
+                                InjectCmd::KeyUp { code } => {
+                                    send_key_event(code, false);
+                                }
+                                InjectCmd::ButtonDown { code } => {
+                                    if let Some((flag, data)) = wire_to_mouse_event(true, code as u8) {
+                                        send_mouse_input(MOUSEINPUT {
                                             dx: 0,
                                             dy: 0,
-                                            mouseData: (i32::from(dy) * WHEEL_DELTA) as u32,
+                                            mouseData: data,
+                                            dwFlags: flag,
+                                            time: 0,
+                                            dwExtraInfo: 0,
+                                        });
+                                    }
+                                }
+                                InjectCmd::ButtonUp { code } => {
+                                    if let Some((flag, data)) = wire_to_mouse_event(false, code as u8) {
+                                        send_mouse_input(MOUSEINPUT {
+                                            dx: 0,
+                                            dy: 0,
+                                            mouseData: data,
+                                            dwFlags: flag,
+                                            time: 0,
+                                            dwExtraInfo: 0,
+                                        });
+                                    }
+                                }
+                                InjectCmd::Wheel { dx, dy } => {
+                                    if dy != 0 && dx != 0 {
+                                        let inputs = [
+                                            INPUT {
+                                                r#type: INPUT_MOUSE,
+                                                Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
+                                                    mi: MOUSEINPUT {
+                                                        dx: 0,
+                                                        dy: 0,
+                                                        mouseData: (i32::from(dy) * WHEEL_DELTA) as u32,
+                                                        dwFlags: MOUSEEVENTF_WHEEL,
+                                                        time: 0,
+                                                        dwExtraInfo: 0,
+                                                    },
+                                                },
+                                            },
+                                            INPUT {
+                                                r#type: INPUT_MOUSE,
+                                                Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
+                                                    mi: MOUSEINPUT {
+                                                        dx: 0,
+                                                        dy: 0,
+                                                        mouseData: (i32::from(dx) * WHEEL_DELTA) as u32,
+                                                        dwFlags: MOUSEEVENTF_HWHEEL,
+                                                        time: 0,
+                                                        dwExtraInfo: 0,
+                                                    },
+                                                },
+                                            },
+                                        ];
+                                        send_inputs(&inputs);
+                                    } else if dy != 0 {
+                                        let delta = i32::from(dy) * WHEEL_DELTA;
+                                        send_mouse_input(MOUSEINPUT {
+                                            dx: 0,
+                                            dy: 0,
+                                            mouseData: delta as u32,
                                             dwFlags: MOUSEEVENTF_WHEEL,
                                             time: 0,
                                             dwExtraInfo: 0,
-                                        },
-                                    },
-                                },
-                                INPUT {
-                                    r#type: INPUT_MOUSE,
-                                    Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
-                                        mi: MOUSEINPUT {
+                                        });
+                                    } else if dx != 0 {
+                                        let delta = i32::from(dx) * WHEEL_DELTA;
+                                        send_mouse_input(MOUSEINPUT {
                                             dx: 0,
                                             dy: 0,
-                                            mouseData: (i32::from(dx) * WHEEL_DELTA) as u32,
+                                            mouseData: delta as u32,
                                             dwFlags: MOUSEEVENTF_HWHEEL,
                                             time: 0,
                                             dwExtraInfo: 0,
+                                        });
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    other => {
+                        match other {
+                            InjectCmd::MouseAbs { x, y } => {
+                                let nx = ((x - vd_x) * 65535 / vd_w) as i32;
+                                let ny = ((y - vd_y) * 65535 / vd_h) as i32;
+                                send_mouse_input(MOUSEINPUT {
+                                    dx: nx,
+                                    dy: ny,
+                                    mouseData: 0,
+                                    dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+                                    time: 0,
+                                    dwExtraInfo: 0,
+                                });
+                            }
+                            InjectCmd::KeyDown { code } => {
+                                send_key_event(code, true);
+                            }
+                            InjectCmd::KeyUp { code } => {
+                                send_key_event(code, false);
+                            }
+                            InjectCmd::ButtonDown { code } => {
+                                if let Some((flag, data)) = wire_to_mouse_event(true, code as u8) {
+                                    send_mouse_input(MOUSEINPUT {
+                                        dx: 0,
+                                        dy: 0,
+                                        mouseData: data,
+                                        dwFlags: flag,
+                                        time: 0,
+                                        dwExtraInfo: 0,
+                                    });
+                                }
+                            }
+                            InjectCmd::ButtonUp { code } => {
+                                if let Some((flag, data)) = wire_to_mouse_event(false, code as u8) {
+                                    send_mouse_input(MOUSEINPUT {
+                                        dx: 0,
+                                        dy: 0,
+                                        mouseData: data,
+                                        dwFlags: flag,
+                                        time: 0,
+                                        dwExtraInfo: 0,
+                                    });
+                                }
+                            }
+                            InjectCmd::Wheel { dx, dy } => {
+                                if dy != 0 && dx != 0 {
+                                    let inputs = [
+                                        INPUT {
+                                            r#type: INPUT_MOUSE,
+                                            Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
+                                                mi: MOUSEINPUT {
+                                                    dx: 0,
+                                                    dy: 0,
+                                                    mouseData: (i32::from(dy) * WHEEL_DELTA) as u32,
+                                                    dwFlags: MOUSEEVENTF_WHEEL,
+                                                    time: 0,
+                                                    dwExtraInfo: 0,
+                                                },
+                                            },
                                         },
-                                    },
-                                },
-                            ];
-                            send_inputs(&inputs);
-                        } else if dy != 0 {
-                            let delta = i32::from(dy) * WHEEL_DELTA;
-                            send_mouse_input(MOUSEINPUT {
-                                dx: 0,
-                                dy: 0,
-                                mouseData: delta as u32,
-                                dwFlags: MOUSEEVENTF_WHEEL,
-                                time: 0,
-                                dwExtraInfo: 0,
-                            });
-                        } else if dx != 0 {
-                            let delta = i32::from(dx) * WHEEL_DELTA;
-                            send_mouse_input(MOUSEINPUT {
-                                dx: 0,
-                                dy: 0,
-                                mouseData: delta as u32,
-                                dwFlags: MOUSEEVENTF_HWHEEL,
-                                time: 0,
-                                dwExtraInfo: 0,
-                            });
+                                        INPUT {
+                                            r#type: INPUT_MOUSE,
+                                            Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
+                                                mi: MOUSEINPUT {
+                                                    dx: 0,
+                                                    dy: 0,
+                                                    mouseData: (i32::from(dx) * WHEEL_DELTA) as u32,
+                                                    dwFlags: MOUSEEVENTF_HWHEEL,
+                                                    time: 0,
+                                                    dwExtraInfo: 0,
+                                                },
+                                            },
+                                        },
+                                    ];
+                                    send_inputs(&inputs);
+                                } else if dy != 0 {
+                                    let delta = i32::from(dy) * WHEEL_DELTA;
+                                    send_mouse_input(MOUSEINPUT {
+                                        dx: 0,
+                                        dy: 0,
+                                        mouseData: delta as u32,
+                                        dwFlags: MOUSEEVENTF_WHEEL,
+                                        time: 0,
+                                        dwExtraInfo: 0,
+                                    });
+                                } else if dx != 0 {
+                                    let delta = i32::from(dx) * WHEEL_DELTA;
+                                    send_mouse_input(MOUSEINPUT {
+                                        dx: 0,
+                                        dy: 0,
+                                        mouseData: delta as u32,
+                                        dwFlags: MOUSEEVENTF_HWHEEL,
+                                        time: 0,
+                                        dwExtraInfo: 0,
+                                    });
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }
-            }
-            if let Some((dx, dy)) = pending_rel.take() {
-                send_mouse_input(MOUSEINPUT {
-                    dx,
-                    dy,
-                    mouseData: 0,
-                    dwFlags: MOUSEEVENTF_MOVE,
-                    time: 0,
-                    dwExtraInfo: 0,
-                });
             }
             println!("[spud] Windows input injector thread exiting");
         });
