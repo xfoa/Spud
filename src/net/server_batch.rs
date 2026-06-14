@@ -46,9 +46,10 @@ fn wire_to_platform_button(wire: u8) -> u16 {
 
 /// Apply the decoded contents of one UDP payload to a session.
 ///
-/// The primary batch is processed first so current input is never delayed by
-/// redundant history. Redundant batches are then used only for recovery from
-/// packet loss.
+/// The primary batch is processed first in the common case so current input
+/// is never delayed by stale history. When a redundant batch fills a gap
+/// (packet loss), it is injected *before* the primary batch so the recovered
+/// movement is applied in chronological order and does not stutter the cursor.
 pub fn apply_batches(
     pt: &[u8],
     session: &mut SessionState,
@@ -66,9 +67,44 @@ pub fn apply_batches(
         .iter()
         .any(|e| matches!(e, Event::MouseMove { .. } | Event::MouseAbs { .. }));
 
-    // If this is a duplicate mouse batch, skip it entirely. Non-mouse events
-    // rely on their per-event seq numbers for deduplication.
+    // Determine which redundant batches actually recover lost packets
+    // without scanning every event. The primary seq_base and the event count
+    // of each redundant batch let us compute the expected seq_base of every
+    // redundant batch in the packet. We only need to check history for batches
+    // at or below the highest seen seq_base; anything newer than that is a
+    // freshly recovered lost batch.
+    let mut missing_redundant: Vec<&crate::net::DecodedBatch> = Vec::new();
+    let mut expected_seq = primary.seq_base;
+    for batch in batches[1..].iter().rev() {
+        let batch_size = batch.events.len() as u16;
+        if batch_size == 0 {
+            continue;
+        }
+        expected_seq = expected_seq.wrapping_sub(batch_size);
+
+        let is_recovered_loss = expected_seq > session.mouse_history.max_seq()
+            || !session.mouse_history.contains(expected_seq);
+
+        if is_recovered_loss {
+            missing_redundant.push(batch);
+        }
+    }
+
     let primary_is_duplicate = is_mouse_batch && session.mouse_history.contains(primary.seq_base);
+
+    // If we need to recover lost mouse movement, apply it in chronological
+    // order *before* the current batch. This avoids a forward-then-backward
+    // visual stutter that would happen if the older delta were injected after
+    // the current one.
+    if !missing_redundant.is_empty() {
+        for batch in missing_redundant {
+            for event in &batch.events {
+                apply_mouse_event(event, session, injector, is_localhost);
+            }
+            session.mouse_history.push(batch.seq_base);
+        }
+    }
+
     if !primary_is_duplicate {
         for event in &primary.events {
             apply_event(event, session, injector, is_localhost);
@@ -78,38 +114,35 @@ pub fn apply_batches(
     if is_mouse_batch {
         session.mouse_history.push(primary.seq_base);
     }
+}
 
-    // Redundant batches are only used for recovery from packet loss. Process
-    // them after the primary batch so current input is never delayed by stale
-    // history.
-    for batch in batches[1..].iter().rev() {
-        if session.mouse_history.contains(batch.seq_base) {
-            continue;
-        }
-        for event in &batch.events {
-            match event {
-                Event::MouseMove { dx, dy } => {
-                    if let Some(inj) = injector {
-                        if !is_localhost {
-                            inj.move_rel(i32::from(*dx), i32::from(*dy));
-                        }
-                    }
+fn apply_mouse_event(
+    event: &Event,
+    session: &SessionState,
+    injector: Option<&dyn Injector>,
+    is_localhost: bool,
+) {
+    match event {
+        Event::MouseMove { dx, dy } => {
+            if let Some(inj) = injector {
+                if !is_localhost {
+                    inj.move_rel(i32::from(*dx), i32::from(*dy));
                 }
-                Event::MouseAbs { x, y } => {
-                    if let Some(inj) = injector {
-                        if !is_localhost {
-                            let px = (*x as i32 * (i32::from(session.screen_width) - 1) + 32767) / 65535;
-                            let py = (*y as i32 * (i32::from(session.screen_height) - 1) + 32767) / 65535;
-                            inj.move_abs(px, py);
-                        }
-                    }
-                }
-                _ => {}
             }
         }
-        session.mouse_history.push(batch.seq_base);
+        Event::MouseAbs { x, y } => {
+            if let Some(inj) = injector {
+                if !is_localhost {
+                    let px = (*x as i32 * (i32::from(session.screen_width) - 1) + 32767) / 65535;
+                    let py = (*y as i32 * (i32::from(session.screen_height) - 1) + 32767) / 65535;
+                    inj.move_abs(px, py);
+                }
+            }
+        }
+        _ => {}
     }
 }
+
 
 fn apply_event(
     event: &Event,
@@ -275,7 +308,27 @@ mod tests {
     }
 
     #[test]
-    fn primary_batch_processed_before_redundancy() {
+    fn primary_batch_processed_before_redundancy_when_no_loss() {
+        let mut session = test_session();
+        let injector = RecordingInjector::default();
+        let (buf, deltas) = encode_mouse_batches(2);
+
+        // Seed history with the redundant batches so they are not treated as lost.
+        for i in 0..2 {
+            session.mouse_history.push(i as u16);
+        }
+
+        apply_batches(&buf, &mut session, Some(&injector), false);
+
+        let events = injector.events();
+        // The first injected event must be from the primary batch.
+        assert_eq!(events.first(), Some(&Event::MouseMove { dx: deltas[2].0, dy: deltas[2].1 }));
+        // Only the primary delta is injected; redundant history is skipped.
+        assert_eq!(events.len(), 1);
+    }
+
+    #[test]
+    fn recovered_redundant_batches_are_in_chronological_order() {
         let mut session = test_session();
         let injector = RecordingInjector::default();
         let (buf, deltas) = encode_mouse_batches(2);
@@ -283,10 +336,11 @@ mod tests {
         apply_batches(&buf, &mut session, Some(&injector), false);
 
         let events = injector.events();
-        // The first injected event must be from the primary batch.
-        assert_eq!(events.first(), Some(&Event::MouseMove { dx: deltas[2].0, dy: deltas[2].1 }));
-        // All three deltas should eventually be injected (primary + 2 recovered).
+        // All three deltas are injected, oldest first, to avoid stutter.
         assert_eq!(events.len(), 3);
+        assert_eq!(events[0], Event::MouseMove { dx: deltas[0].0, dy: deltas[0].1 });
+        assert_eq!(events[1], Event::MouseMove { dx: deltas[1].0, dy: deltas[1].1 });
+        assert_eq!(events[2], Event::MouseMove { dx: deltas[2].0, dy: deltas[2].1 });
     }
 
     #[test]

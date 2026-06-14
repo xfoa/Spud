@@ -295,6 +295,9 @@ pub struct MouseHistory {
     buffer: VecDeque<u16>,
     /// Maximum number of sequence numbers to track at once.
     capacity: usize,
+    /// Highest sequence number ever pushed. Used to short-circuit redundant
+    /// batch scans: any batch with a seq_base greater than this is new.
+    max_seq: u16,
 }
 
 impl MouseHistory {
@@ -303,6 +306,7 @@ impl MouseHistory {
             bitmap: Box::new([0u8; 8192]),
             buffer: VecDeque::with_capacity(capacity),
             capacity,
+            max_seq: 0,
         }
     }
 
@@ -314,6 +318,11 @@ impl MouseHistory {
         }
     }
 
+    /// Highest sequence number currently tracked.
+    pub fn max_seq(&self) -> u16 {
+        self.max_seq
+    }
+
     /// Check whether a sequence number has been seen.
     pub fn contains(&self, seq: u16) -> bool {
         Self::test_bit(&self.bitmap, seq)
@@ -322,9 +331,11 @@ impl MouseHistory {
     /// Mark a sequence number as seen, evicting the oldest if at capacity.
     pub fn push(&mut self, seq: u16) {
         if self.capacity == 0 {
+            self.max_seq = self.max_seq.max(seq);
             return;
         }
         if self.contains(seq) {
+            self.max_seq = self.max_seq.max(seq);
             return;
         }
         while self.buffer.len() >= self.capacity {
@@ -333,6 +344,7 @@ impl MouseHistory {
         }
         Self::set_bit(&mut self.bitmap, seq);
         self.buffer.push_back(seq);
+        self.max_seq = self.max_seq.max(seq);
     }
 
     fn test_bit(bitmap: &[u8; 8192], seq: u16) -> bool {

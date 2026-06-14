@@ -169,8 +169,8 @@ impl Default for ClientConfig {
             blank_screen: false,
             show_hotkey_on_blank: true,
             encrypt_udp: true,
-            mouse_batch_size: 1,
-            batch_redundancy: 0,
+            mouse_batch_size: 4,
+            batch_redundancy: 5,
             udp_drop_percent: 0,
         }
     }
