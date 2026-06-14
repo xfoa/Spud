@@ -105,7 +105,9 @@ async fn try_connect_addrs(
     let mut last_err = None;
     for addr in addrs {
         match tokio::time::timeout(Duration::from_secs(5), TcpStream::connect(*addr)).await {
-            Ok(Ok(tcp)) => match tokio::time::timeout(
+            Ok(Ok(tcp)) => {
+                let _ = tcp.set_nodelay(true);
+                match tokio::time::timeout(
                 Duration::from_secs(10),
                 connector.connect(server_name.clone(), tcp),
             )
@@ -123,6 +125,7 @@ async fn try_connect_addrs(
                         "TLS handshake timeout",
                     ));
                 }
+            }
             },
             Ok(Err(e)) => {
                 eprintln!("[spud] TCP connect failed for {addr}: {e}");
@@ -685,8 +688,8 @@ impl ClientConnection {
             ));
         }
 
-        let udp = UdpSocket::bind("0.0.0.0:0").await?;
-        udp.connect(server_addr).await?;
+        let bind_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
+        let udp = crate::net::create_udp_socket(bind_addr, Some(server_addr)).await?;
 
         Ok((framed, udp, conn_id, server_encrypt, phc_to_save, screen_width, screen_height))
     }

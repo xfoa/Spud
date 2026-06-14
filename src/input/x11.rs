@@ -136,7 +136,7 @@ fn run(hotkey: &str, mut output: mpsc::Sender<InputEvent>) -> Result<(), Box<dyn
                         events: libc::POLLIN,
                         revents: 0,
                     };
-                    let ret = unsafe { libc::poll(&mut pollfd, 1, 10) };
+                    let ret = unsafe { libc::poll(&mut pollfd, 1, 1) };
                     if ret < 0 || pollfd.revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 {
                         break;
                     }

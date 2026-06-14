@@ -1643,7 +1643,7 @@ impl State {
         let batch_size_field = column![
             text("Mouse movement max batch size").size(16).color(mt::ON_SURFACE),
             ui::v_space(4.0),
-            ui::helper_text("Higher values decrease UDP overhead but may cause slight lag at lower pointer speeds."),
+            ui::helper_text("1 = no batching (lowest latency). Higher values decrease UDP overhead but may cause slight lag."),
             ui::v_space(16.0),
             batch_size_row,
         ]

@@ -50,7 +50,9 @@ impl ServerListener {
         tcp_socket.bind(tcp_addr)?;
         let tcp = tcp_socket.listen(128)?;
 
-        let udp = UdpSocket::bind((addr, port)).await?;
+        let ip: std::net::IpAddr = addr.parse().map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let bind_addr = SocketAddr::new(ip, port);
+        let udp = crate::net::create_udp_socket(bind_addr, None).await?;
 
         let shutdown = Arc::new(tokio::sync::Notify::new());
         let sessions: Arc<SessionTable> = Arc::new(SessionTable::new());
@@ -155,22 +157,6 @@ fn get_screen_size() -> (u16, u16) {
     {
         return (1920, 1080);
     }
-}
-
-#[cfg(target_os = "linux")]
-fn wire_to_platform_button(wire: u8) -> u16 {
-    crate::input::wire_to_linux_button(wire)
-}
-
-#[cfg(target_os = "macos")]
-fn wire_to_platform_button(wire: u8) -> u16 {
-    // macOS injector translates wire codes internally.
-    wire as u16
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-fn wire_to_platform_button(wire: u8) -> u16 {
-    wire as u16
 }
 
 #[cfg(target_os = "linux")]
@@ -357,148 +343,12 @@ async fn run_server(
 
                             if decrypted.is_some() || !session.encrypt {
                                 session.record_decrypt_success();
-                                let batches = crate::net::Event::decode_all_batches(pt);
-                                if !batches.is_empty() {
-                                    // Process redundant batches in ascending order (oldest first).
-                                    // Wire order is: [current][newest_redundant]...[oldest_redundant],
-                                    // so redundant batches are batches[1..] with newest at index 1.
-                                    // Ascending = oldest first = iterate in reverse.
-                                    let is_localhost = src.ip().is_loopback();
-                                    for batch in batches[1..].iter().rev() {
-                                        if session.mouse_history.contains(batch.seq_base) {
-                                            continue;
-                                        }
-                                        for event in &batch.events {
-                                            #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-                                            if let Some(inj) = injector.get() {
-                                                if !is_localhost {
-                                                    match event {
-                                                        crate::net::Event::MouseMove { dx, dy } => {
-                                                            inj.move_rel(i32::from(*dx), i32::from(*dy));
-                                                        }
-                                                        crate::net::Event::MouseAbs { x, y } => {
-                                                            let px = (*x as i32 * (i32::from(session.screen_width) - 1) + 32767) / 65535;
-                                                            let py = (*y as i32 * (i32::from(session.screen_height) - 1) + 32767) / 65535;
-                                                            inj.move_abs(px, py);
-                                                        }
-                                                        _ => {}
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        session.mouse_history.push(batch.seq_base);
-                                    }
-
-                                    // Process primary (current) batch fully.
-                                    let primary = &batches[0];
-                                    for event in &primary.events {
-                                        // Deduplicate keyboard and wheel events by seq number.
-                                        // Seq 0 is from old clients (backward compat) and bypasses dedup.
-                                        let seq = match event {
-                                            crate::net::Event::KeyDown(_, s) | crate::net::Event::KeyUp(_, s) | crate::net::Event::KeyRepeat(_, s) => Some(*s),
-                                            crate::net::Event::Wheel { seq, .. } => Some(*seq),
-                                            _ => None,
-                                        };
-                                        if let Some(s) = seq {
-                                            if s != 0 && session.key_history.contains(s) {
-                                                continue; // duplicate
-                                            }
-                                            if s != 0 {
-                                                session.key_history.push(s);
-                                            }
-                                        }
-
-                                        // If a repeat arrives without a prior down (lost packet),
-                                        // inject the synthetic down before handling the repeat.
-                                        let needs_key_down = matches!(
-                                            event,
-                                            crate::net::Event::KeyRepeat(c, _) if !session.tracker.has_key(*c)
-                                        );
-                                        let needs_button_down = matches!(
-                                            event,
-                                            crate::net::Event::MouseButtonRepeat(b) if !session.tracker.has_button(*b)
-                                        );
-
-                                        // Remember whether key/button was held before tracker
-                                        // updates state, so we can skip injecting orphan ups.
-                                        let key_was_down = match event {
-                                            crate::net::Event::KeyUp(c, _) => Some(session.tracker.has_key(*c)),
-                                            _ => None,
-                                        };
-                                        let button_was_down = match event {
-                                            crate::net::Event::MouseButton { button: b, pressed: false } => Some(session.tracker.has_button(*b)),
-                                            _ => None,
-                                        };
-
-                                        let actions = session.tracker.handle_event(event);
-                                        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-                                        if let Some(inj) = injector.get() {
-                                            if !is_localhost {
-                                                // Inject only synthetic tracker actions
-                                                // (lost-up / timeout releases). Regular press/release
-                                                // events are handled by the direct match below.
-                                                for action in &actions {
-                                                    if action.contains("(lost up)") || action.contains("(timeout)") {
-                                                        inj.inject_action(action);
-                                                    }
-                                                }
-                                                if needs_key_down {
-                                                    if let crate::net::Event::KeyRepeat(code, _) = event {
-                                                        inj.key_down(*code);
-                                                    }
-                                                }
-                                                if needs_button_down {
-                                                    if let crate::net::Event::MouseButtonRepeat(button) = event {
-                                                        inj.button_down(wire_to_platform_button(*button));
-                                                    }
-                                                }
-                                                match event {
-                                                    crate::net::Event::KeyDown(code, _) => {
-                                                        inj.key_down(*code);
-                                                    }
-                                                    crate::net::Event::KeyUp(code, _) => {
-                                                        if key_was_down == Some(true) {
-                                                            inj.key_up(*code);
-                                                        }
-                                                    }
-                                                    crate::net::Event::KeyRepeat(_, _) => {
-                                                        // Heartbeat - tracker already updated, no injection needed
-                                                    }
-                                                    crate::net::Event::MouseButton { button, pressed: true } => {
-                                                        inj.button_down(wire_to_platform_button(*button));
-                                                    }
-                                                    crate::net::Event::MouseButton { button, pressed: false } => {
-                                                        if button_was_down == Some(true) {
-                                                            inj.button_up(wire_to_platform_button(*button));
-                                                        }
-                                                    }
-                                                    crate::net::Event::MouseButtonRepeat(_) => {}
-                                                    crate::net::Event::Wheel { dx, dy, .. } => {
-                                                        inj.wheel(*dx, *dy);
-                                                    }
-                                                    crate::net::Event::MouseAbs { x, y } => {
-                                                        let px = (*x as i32 * (i32::from(session.screen_width) - 1) + 32767) / 65535;
-                                                        let py = (*y as i32 * (i32::from(session.screen_height) - 1) + 32767) / 65535;
-                                                        inj.move_abs(px, py);
-                                                    }
-                                                    crate::net::Event::MouseMove { dx, dy } => {
-                                                        inj.move_rel(i32::from(*dx), i32::from(*dy));
-                                                    }
-                                                    crate::net::Event::Keepalive => {}
-                                                }
-                                            }
-                                        }
-                                    }
-                                    // Track the primary batch so future redundant copies are skipped.
-                                    // Only mouse batches are sent redundantly; non-mouse primaries use seq_base=0
-                                    // and are not redundantly transmitted, so skip those.
-                                    let is_mouse_batch = primary.events.iter().any(|e| {
-                                        matches!(e, crate::net::Event::MouseMove { .. } | crate::net::Event::MouseAbs { .. })
-                                    });
-                                    if is_mouse_batch {
-                                        session.mouse_history.push(primary.seq_base);
-                                    }
-                                }
+                                let is_localhost = src.ip().is_loopback();
+                                #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+                                let inj = injector.get().map(|i| i as &dyn crate::net::server_batch::Injector);
+                                #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+                                let inj: Option<&dyn crate::net::server_batch::Injector> = None;
+                                crate::net::server_batch::apply_batches(pt, &mut session, inj, is_localhost);
                             } else if decrypt_failed {
                                 should_remove = session.record_decrypt_failure();
                                 if should_remove {
@@ -546,6 +396,7 @@ async fn handle_client(
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     _injector: InjectorArc,
 ) {
+    let _ = stream.set_nodelay(true);
     let tls = match acceptor.accept(stream).await {
         Ok(tls) => tls,
         Err(e) => {
@@ -664,7 +515,8 @@ async fn handle_client(
                                 }
                                 ControlMsg::SetBatchConfig { max_batch, batch_redundancy } => {
                                     if let Some(mut s) = sessions.get_mut(&conn_id) {
-                                        let capacity = max_batch as usize * batch_redundancy as usize * batch_history_multiplier as usize;
+                                        let capacity = (max_batch as usize * batch_redundancy as usize * batch_history_multiplier as usize)
+                                            .max(crate::session::SessionState::MIN_MOUSE_HISTORY_CAPACITY);
                                         s.mouse_history.resize(capacity);
                                         println!("[server] conn {conn_id} batch config: max_batch={max_batch} redundancy={batch_redundancy} history_capacity={capacity}");
                                     }

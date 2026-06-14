@@ -418,6 +418,10 @@ pub struct SessionState {
 }
 
 impl SessionState {
+    /// Minimum mouse-history capacity. Even with redundancy disabled, we keep
+    /// a small window so duplicate/reordered UDP packets are deduplicated.
+    pub const MIN_MOUSE_HISTORY_CAPACITY: usize = 128;
+
     pub fn new(encrypt: bool, keys: Option<SessionKeys>, src_addr: SocketAddr, key_timeout_ms: u16, screen_width: u16, screen_height: u16) -> Self {
         Self {
             keys,
@@ -430,7 +434,7 @@ impl SessionState {
             screen_width,
             screen_height,
             window_mode: false,
-            mouse_history: MouseHistory::new(0),
+            mouse_history: MouseHistory::new(Self::MIN_MOUSE_HISTORY_CAPACITY),
             key_history: SeqHistoryU8::new(64),
         }
     }

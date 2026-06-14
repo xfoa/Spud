@@ -2,9 +2,73 @@ pub mod auth;
 pub mod client;
 pub mod protocol;
 pub mod server;
+pub mod server_batch;
 pub mod tls;
 
+use std::io;
+use std::net::SocketAddr;
 use std::sync::{Mutex, OnceLock};
+
+#[cfg(target_os = "linux")]
+use std::os::fd::AsRawFd;
+
+const UDP_SEND_BUFFER: usize = 2 * 1024 * 1024;
+const UDP_RECV_BUFFER: usize = 2 * 1024 * 1024;
+
+/// Apply low-latency/reliability tuning to a UDP socket.
+/// Larger buffers reduce drop rates under bursts; TOS/priority hints minimise
+/// scheduling jitter without adding protocol-level latency.
+pub fn configure_udp_socket(socket: &socket2::Socket, addr: &SocketAddr) -> io::Result<()> {
+    let _ = socket.set_send_buffer_size(UDP_SEND_BUFFER);
+    let _ = socket.set_recv_buffer_size(UDP_RECV_BUFFER);
+
+    // IPTOS_LOWDELAY on IPv4; ignore errors on stacks that don't honour it.
+    if addr.is_ipv4() {
+        let _ = socket.set_tos(0x10);
+    }
+
+    // Linux-specific SO_PRIORITY hint; ignored elsewhere.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        let fd = socket.as_raw_fd();
+        let priority: libc::c_int = 6;
+        let _ = libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_PRIORITY,
+            &priority as *const _ as *const libc::c_void,
+            std::mem::size_of_val(&priority) as libc::socklen_t,
+        );
+    }
+
+    Ok(())
+}
+
+/// Create a tokio UDP socket with low-latency/reliability tuning applied
+/// before bind/connect. `connect_addr` is used both for buffer/TOS tuning
+/// and to `connect()` the socket.
+pub async fn create_udp_socket(
+    bind_addr: SocketAddr,
+    connect_addr: Option<SocketAddr>,
+) -> io::Result<tokio::net::UdpSocket> {
+    let domain = if bind_addr.is_ipv4() {
+        socket2::Domain::IPV4
+    } else {
+        socket2::Domain::IPV6
+    };
+    let socket = socket2::Socket::new(domain, socket2::Type::DGRAM, Some(socket2::Protocol::UDP))?;
+    socket.set_nonblocking(true)?;
+    if let Some(addr) = connect_addr {
+        configure_udp_socket(&socket, &addr)?;
+    }
+    socket.bind(&bind_addr.into())?;
+    let std_socket: std::net::UdpSocket = socket.into();
+    let udp = tokio::net::UdpSocket::from_std(std_socket)?;
+    if let Some(addr) = connect_addr {
+        udp.connect(addr).await?;
+    }
+    Ok(udp)
+}
 
 use iced::futures::channel::mpsc as ifmpsc;
 use iced::futures::stream::Stream;
@@ -55,7 +119,7 @@ pub struct DecodedBatch {
 /// Uses a compact 5-byte fixed encoding per event.
 /// Keyboard and wheel events carry a u8 sequence number for deduplication.
 /// Seq 0 is reserved for backward compatibility with old clients.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     KeyDown(u16, u8),
     KeyUp(u16, u8),
