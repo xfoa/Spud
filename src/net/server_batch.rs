@@ -70,12 +70,12 @@ pub fn apply_batches(
     // Determine which redundant batches actually recover lost packets
     // without scanning every event. The primary seq_base and the event count
     // of each redundant batch let us compute the expected seq_base of every
-    // redundant batch in the packet. We only need to check history for batches
-    // at or below the highest seen seq_base; anything newer than that is a
-    // freshly recovered lost batch.
-    let mut missing_redundant: Vec<&crate::net::DecodedBatch> = Vec::new();
+    // redundant batch in the packet. Iterate newest-first (wire order) because
+    // the spacing between seq_base values is the size of the *preceding* batch.
+    // Collect in newest-first order, then reverse for chronological injection.
+    let mut missing_redundant: Vec<(&crate::net::DecodedBatch, u16)> = Vec::new();
     let mut expected_seq = primary.seq_base;
-    for batch in batches[1..].iter().rev() {
+    for batch in batches[1..].iter() {
         let batch_size = batch.events.len() as u16;
         if batch_size == 0 {
             continue;
@@ -86,9 +86,10 @@ pub fn apply_batches(
             || !session.mouse_history.contains(expected_seq);
 
         if is_recovered_loss {
-            missing_redundant.push(batch);
+            missing_redundant.push((batch, expected_seq));
         }
     }
+    missing_redundant.reverse();
 
     let primary_is_duplicate = is_mouse_batch && session.mouse_history.contains(primary.seq_base);
 
@@ -97,11 +98,11 @@ pub fn apply_batches(
     // visual stutter that would happen if the older delta were injected after
     // the current one.
     if !missing_redundant.is_empty() {
-        for batch in missing_redundant {
+        for (batch, expected_seq) in missing_redundant {
             for event in &batch.events {
                 apply_mouse_event(event, session, injector, is_localhost);
             }
-            session.mouse_history.push(batch.seq_base);
+            session.mouse_history.push(expected_seq);
         }
     }
 
