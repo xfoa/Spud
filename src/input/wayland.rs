@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::os::fd::AsRawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::thread;
@@ -312,27 +311,7 @@ fn run_wayland(
             conn.flush()?;
         }
 
-        event_queue.dispatch_pending(&mut state)?;
-        conn.flush()?;
-
-        let read_guard = match event_queue.prepare_read() {
-            Some(g) => g,
-            None => continue,
-        };
-
-        let fd = read_guard.connection_fd().as_raw_fd();
-        let mut pfd = libc::pollfd {
-            fd,
-            events: libc::POLLIN,
-            revents: 0,
-        };
-        let result = unsafe { libc::poll(&mut pfd, 1, 1) };
-
-        if result > 0 && (pfd.revents & libc::POLLIN) != 0 {
-            read_guard.read()?;
-        } else {
-            drop(read_guard);
-        }
+        event_queue.blocking_dispatch(&mut state)?;
     }
 
     if let Some(l) = locked.take() {

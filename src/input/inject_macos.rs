@@ -87,6 +87,7 @@ impl InputInjector {
             // the target application from seeing Space as "stuck".
             let mut space_during_super: bool = false;
 
+            let mut pending_rel: Option<(i32, i32)> = None;
             loop {
                 let timeout = if held_keys.is_empty() {
                     Duration::from_secs(1)
@@ -95,19 +96,22 @@ impl InputInjector {
                 };
                 match rx.recv_timeout(timeout) {
                     Ok(cmd) => {
+                        let flush_pending = !matches!(cmd, InjectCmd::MouseRel { .. });
+                        if flush_pending {
+                            if let Some((dx, dy)) = pending_rel.take() {
+                                cursor.x += f64::from(dx);
+                                cursor.y += f64::from(dy);
+                                post_mouse_relative(&hid, dx, dy, &pressed_buttons);
+                            }
+                        }
                         match cmd {
                             InjectCmd::MouseAbs { x, y } => {
                                 cursor = CGPoint::new(f64::from(x), f64::from(y));
                                 post_mouse_move(&hid, cursor, &pressed_buttons);
                             }
                             InjectCmd::MouseRel { dx, dy } => {
-                                cursor.x += f64::from(dx);
-                                cursor.y += f64::from(dy);
-                                // Use IOKit HID for relative moves so raw-input
-                                // games see the events.  Delta is placed in both
-                                // the point (for modern macOS) and data union
-                                // (for older macOS) for maximum compatibility.
-                                post_mouse_relative(&hid, dx, dy, &pressed_buttons);
+                                let (acc_dx, acc_dy) = pending_rel.unwrap_or((0, 0));
+                                pending_rel = Some((acc_dx.saturating_add(dx), acc_dy.saturating_add(dy)));
                             }
                             InjectCmd::KeyDown { code } => {
                                 if let Some(keycode) = macos_keycodes::evdev_to_macos(code) {
@@ -209,6 +213,11 @@ impl InputInjector {
                         *entry = now + REPEAT_INTERVAL;
                     }
                 }
+            }
+            if let Some((dx, dy)) = pending_rel.take() {
+                cursor.x += f64::from(dx);
+                cursor.y += f64::from(dy);
+                post_mouse_relative(&hid, dx, dy, &pressed_buttons);
             }
             eprintln!("[spud] macOS input injector thread exiting");
         });

@@ -56,6 +56,7 @@ fn handle_stream(
     kinput_device: &kinput::InputDevice,
     evdev: &mut evdev::uinput::VirtualDevice,
 ) -> io::Result<()> {
+    let mut pending_rel: Option<(i32, i32)> = None;
     loop {
         let mut len_buf = [0u8; 2];
         stream.read_exact(&mut len_buf)?;
@@ -72,12 +73,18 @@ fn handle_stream(
                 continue;
             }
         };
+        if !matches!(cmd, InjectCmd::MouseRel { .. }) {
+            if let Some((dx, dy)) = pending_rel.take() {
+                let _ = kinput_device.mouse.rel.move_xy(dx, dy);
+            }
+        }
         match cmd {
             InjectCmd::MouseAbs { x, y } => {
                 let _ = kinput_device.mouse.abs.move_xy(x, y);
             }
             InjectCmd::MouseRel { dx, dy } => {
-                let _ = kinput_device.mouse.rel.move_xy(dx, dy);
+                let (acc_dx, acc_dy) = pending_rel.unwrap_or((0, 0));
+                pending_rel = Some((acc_dx.saturating_add(dx), acc_dy.saturating_add(dy)));
             }
             InjectCmd::KeyDown { code } => {
                 if let Err(e) = emit_key(evdev, code, 1) {

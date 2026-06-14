@@ -73,13 +73,21 @@ impl InputInjector {
                 }
             };
 
+            let mut pending_rel: Option<(i32, i32)> = None;
             while let Ok(cmd) = rx.recv() {
+                let flush_pending = !matches!(cmd, InjectCmd::MouseRel { .. });
+                if flush_pending {
+                    if let Some((dx, dy)) = pending_rel.take() {
+                        kinput_device.mouse.rel.move_xy(dx, dy);
+                    }
+                }
                 match cmd {
                     InjectCmd::MouseAbs { x, y } => {
                         kinput_device.mouse.abs.move_xy(x, y);
                     }
                     InjectCmd::MouseRel { dx, dy } => {
-                        kinput_device.mouse.rel.move_xy(dx, dy);
+                        let (acc_dx, acc_dy) = pending_rel.unwrap_or((0, 0));
+                        pending_rel = Some((acc_dx.saturating_add(dx), acc_dy.saturating_add(dy)));
                     }
                     InjectCmd::KeyDown { code } => {
                         if let Some(ref mut dev) = evdev_device {
@@ -107,6 +115,9 @@ impl InputInjector {
                         }
                     }
                 }
+            }
+            if let Some((dx, dy)) = pending_rel.take() {
+                kinput_device.mouse.rel.move_xy(dx, dy);
             }
             println!("[spud] input injector thread exiting");
         });

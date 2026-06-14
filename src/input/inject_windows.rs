@@ -53,7 +53,21 @@ impl InputInjector {
                 )
             };
 
+            let mut pending_rel: Option<(i32, i32)> = None;
             while let Ok(cmd) = rx.recv() {
+                let flush_pending = !matches!(cmd, InjectCmd::MouseRel { .. });
+                if flush_pending {
+                    if let Some((dx, dy)) = pending_rel.take() {
+                        send_mouse_input(MOUSEINPUT {
+                            dx,
+                            dy,
+                            mouseData: 0,
+                            dwFlags: MOUSEEVENTF_MOVE,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        });
+                    }
+                }
                 match cmd {
                     InjectCmd::MouseAbs { x, y } => {
                         let nx = ((x - vd_x) * 65535 / vd_w) as i32;
@@ -68,14 +82,8 @@ impl InputInjector {
                         });
                     }
                     InjectCmd::MouseRel { dx, dy } => {
-                        send_mouse_input(MOUSEINPUT {
-                            dx,
-                            dy,
-                            mouseData: 0,
-                            dwFlags: MOUSEEVENTF_MOVE,
-                            time: 0,
-                            dwExtraInfo: 0,
-                        });
+                        let (acc_dx, acc_dy) = pending_rel.unwrap_or((0, 0));
+                        pending_rel = Some((acc_dx.saturating_add(dx), acc_dy.saturating_add(dy)));
                     }
                     InjectCmd::KeyDown { code } => {
                         send_key_event(code, true);
@@ -161,6 +169,16 @@ impl InputInjector {
                         }
                     }
                 }
+            }
+            if let Some((dx, dy)) = pending_rel.take() {
+                send_mouse_input(MOUSEINPUT {
+                    dx,
+                    dy,
+                    mouseData: 0,
+                    dwFlags: MOUSEEVENTF_MOVE,
+                    time: 0,
+                    dwExtraInfo: 0,
+                });
             }
             println!("[spud] Windows input injector thread exiting");
         });
